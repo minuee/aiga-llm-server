@@ -1,0 +1,14 @@
+name: api-server
+python: 3.11
+dependencies:
+  - fastapi
+  - uvicorn
+  - mysql-connector-python
+  - sqlalchemy
+  - python-dotenv
+  - langchain
+  - langchain-community
+  - langchain-openai
+  - langgraph
+  - azure-identity
+  - openai

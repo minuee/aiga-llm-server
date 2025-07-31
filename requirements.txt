@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+mysql-connector-python
+sqlalchemy
+dotenv
+langchain
+langchain-community
+langchain-openai
+langgraph
+azure-identity
+openai
