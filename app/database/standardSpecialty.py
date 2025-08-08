@@ -8,7 +8,7 @@ def getStandardSpecialyByDB(disease: str):
     
     # 2차: 문자열 매칭해서 복수의 표준진료분야 제시해 유저가 선택
     logger.debug("2차-1: doctor_evaluation의 표준진료분야 매칭")
-    query = """select standard_spec from doctor_evaluation group by standard_spec having standard_spec = :disease"""
+    query = """SELECT standard_spec FROM doctor_evaluation GROUP BY standard_spec having standard_spec = :disease"""
     param = {"disease": disease}
     logger.debug(f"fechData: doctor_evaluation")
     result = fetchData(query, param)["data"]
@@ -16,7 +16,7 @@ def getStandardSpecialyByDB(disease: str):
         return result[0]['standard_spec']
     
     logger.debug("2차-2: doctor_evaluation의 표준진료분야와 입력 질환과의 음절 매칭")
-    query = """select standard_spec from doctor_evaluation group by standard_spec order by standard_spec"""
+    query = """SELECT standard_spec FROM doctor_evaluation GROUP BY standard_spec ORDER BY standard_spec"""
     logger.debug(f"fechData: standard_spec")
     result = fetchData(query, {})["data"]
     condidate_disease = {}

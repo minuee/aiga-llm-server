@@ -8,7 +8,7 @@ def getRecommandDoctors(standard_disease:str, disease: str, evalType: EVAL_TYPE=
 
     # 3차: 별도의 doctor 전문분야 테이블에서 검색해서 처리
 
-    prefix_query = """select s.shortName, s.address, s.lat, s.lon, s.telephone, b.doctorname, b.deptname, b.specialties, d.jsondata"""
+    prefix_query = """SELECT s.shortName, s.address, s.lat, s.lon, s.telephone, b.doctorname, b.deptname, b.specialties, d.jsondata"""
          
     if not standard_disease:
         standard_disease = disease
@@ -25,19 +25,15 @@ def getRecommandDoctors(standard_disease:str, disease: str, evalType: EVAL_TYPE=
         """
           
         postfix_query = """
-        from (select * from specialty where specialty like :disease) a
-        left join doctor_specialty ds
-        on a.specialty_id = ds.specialty_id 
-        left join doctor_evaluation e
-        on ds.doctor_id = e.doctor_id and a.specialty = e.standard_spec 
-        left join doctor_basic b
-        on ds.doctor_id = b.doctor_id
-        left join doctor_career d
-        on b.rid = d.rid
-        left join hospital s 
-        on b.hid = s.hid 
-        where b.doctorname is not null and b.doctor_id is not null
-        order by total_score desc limit 15"""
+        FROM 
+            ( SELECT specialty_id,specialty FROM specialty WHERE specialty like :disease ) a
+            LEFT JOIN doctor_specialty ds ON a.specialty_id = ds.specialty_id 
+            LEFT JOIN doctor_evaluation e ON ds.doctor_id = e.doctor_id and a.specialty = e.standard_spec 
+            LEFT JOIN doctor_basic b ON ds.doctor_id = b.doctor_id
+            LEFT JOIN doctor_career d ON b.rid = d.rid
+            LEFT JOIN hospital s ON b.hid = s.hid 
+        WHERE b.doctorname is not null and b.doctor_id is not null
+        ORDER BY total_score desc LIMIT 15"""
     else:
         prefix_query += """,b.rid, b.doctor_id, b.doctor_url, b.profileimgurl, d.education, d.career, 
         IFNULL(e.paper_score, 0) as paper_score, 
@@ -51,15 +47,13 @@ def getRecommandDoctors(standard_disease:str, disease: str, evalType: EVAL_TYPE=
         """
 
         postfix_query = """
-        from (select * from doctor_evaluation where standard_spec like :disease) e
-        left join doctor_basic b
-        on e.doctor_id = b.doctor_id
-        left join doctor_career d
-        on b.rid = d.rid
-        left join hospital s 
-        on b.hid = s.hid 
-        where b.doctorname is not null and b.doctor_id is not null
-        order by total_score desc limit 20"""
+        FROM 
+            (SELECT * FROM doctor_evaluation WHERE standard_spec like :disease) e
+            LEFT JOIN doctor_basic b ON e.doctor_id = b.doctor_id
+            LEFT JOIN doctor_career d ON b.rid = d.rid
+            LEFT JOIN hospital s ON b.hid = s.hid 
+        WHERE b.doctorname is not null and b.doctor_id is not null
+        ORDER BY total_score desc LIMIT 20"""
 
     if evalType == EVAL_TYPE.TOTAL:
         score_query = """,(IFNULL(e.patient_score, 0) * :score_weight + IFNULL(e.paper_score, 0) * :score_weight + IFNULL(e.public_score, 0) * :score_weight) AS total_score"""

@@ -3,7 +3,7 @@
 # 로그 관리 스크립트
 # 사용법: ./manage_logs.sh [clean|list|tail]
 
-LOG_DIR=/Users/kormedi/Documents/WorkPlace/bitbucket/aiga-llm-server/logs/aiga_llm_server
+LOG_DIR=/home/ubuntu/workspace/aiga-llm-renual/logs/aiga_llm_server
 
 case "$1" in
     "clean")

@@ -5,14 +5,33 @@ from app.common.common import calculate_similarity
 
 def findHospitals(department: str):
   # 2차: 문자열 매칭해서 복수의 표준진료분야 제시해 유저가 선택
+  query_old = """
+    SELECT 
+      a.hid as hospital_id, s.shortName as name, s.address, s.lat, s.lon, s.telephone 
+    FROM
+      (
+        SELECT 
+          *, IFNULL(public_score, 0) AS total_score 
+        FROM 
+          hospital_evaluation WHERE matched_dept = :department
+        ORDER BY  total_score desc LIMIT 15
+    ) a
+    LEFT JOIN hospital s on a.hid = s.hid
+  """
+
+  # 2025.08.08 쿼리 수정 by Noh.S.N
   query = """
-      select a.hid as hospital_id, s.shortName as name, s.address, s.lat, s.lon, s.telephone from
-      (select *, IFNULL(public_score, 0) AS total_score 
-          from hospital_evaluation where matched_dept = :department
-          order by total_score desc limit 15
-      ) a
-      left join hospital s 
-      on a.hid = s.hid
+    SELECT 
+      a.hid as hospital_id, s.shortName as name, s.address, s.lat, s.lon, s.telephone 
+    FROM
+      (
+        SELECT 
+         hid
+        FROM 
+          hospital_evaluation WHERE matched_dept = :department
+        GROUP BY hid
+        ORDER BY  max(public_score) desc LIMIT 15
+    ) a LEFT JOIN hospital s on a.hid = s.hid
   """
   param = {"department": department}
   logger.debug(f"fechData: hospital_evaluation")
