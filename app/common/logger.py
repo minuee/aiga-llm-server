@@ -61,7 +61,7 @@ class CustomFormatter(logging.Formatter):
         formatter = logging.Formatter(log_fmt, datefmt='%Y-%m-%d %H:%M:%S')
         return formatter.format(record)
 
-def setup_logger(name: str = "aiga_llm_server", log_level: str = "INFO"):
+def setup_logger(log_level: str = "INFO"):
     """로거 설정 - 24시간마다 자동 로그 파일 생성"""
     
     # 로그 디렉토리 생성 (Windows 환경 고려)
@@ -74,16 +74,16 @@ def setup_logger(name: str = "aiga_llm_server", log_level: str = "INFO"):
         log_dir = Path.cwd() / "logs" / "aiga_llm_server"
         log_dir.mkdir(parents=True, exist_ok=True)
     
-    # 로거 생성
-    logger = logging.getLogger(name)
-    ## - Noh logger.setLevel(getattr(logging, log_level.upper()))
-    
-    # 이미 핸들러가 설정되어 있다면 중복 방지
-    if logger.handlers:
-        return logger
+    # 로거 생성 (루트 로거)
+    logger = logging.getLogger()
+    logger.setLevel(getattr(logging, log_level.upper()))
+
+    # 기존 핸들러 제거
+    for handler in logger.handlers[:]:
+        logger.removeHandler(handler)
     
     # 콘솔 핸들러 (Windows 환경 고려)
-    console_handler = logging.StreamHandler()
+    console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(logging.INFO)
     console_formatter = CustomFormatter()
     console_handler.setFormatter(console_formatter)
@@ -140,4 +140,4 @@ def setup_logger(name: str = "aiga_llm_server", log_level: str = "INFO"):
     return logger
 
 # 전역 로거 인스턴스
-logger = setup_logger() 
+logger = setup_logger()

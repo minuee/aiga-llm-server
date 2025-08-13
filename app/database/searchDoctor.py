@@ -157,7 +157,7 @@ def getSearchDoctorsByHospitalAndDept(hospital: str, deptname: str) -> dict:
             IFNULL(e.explanation, 0) as explanation, 
             IFNULL(e.recommendation, 0) as recommendation
         FROM 
-            ( SELECT * FROM doctor_basic where doctor_id is not null and hid = :hid and deptname = :deptname) a
+            ( SELECT * FROM doctor_basic WHERE doctor_id is not null and hid = :hid and deptname = :deptname) a
             LEFT JOIN doctor_career b ON a.rid = b.rid 
             LEFT JOIN (
                 SELECT 

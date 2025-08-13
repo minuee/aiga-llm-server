@@ -4,6 +4,7 @@ from ..services.service import startQuery, stopQuery
 from ..database.db import get_db
 from fastapi.responses import JSONResponse
 from ..services.service import findDoctor
+from ..common.logger import logger
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -19,6 +20,7 @@ class ChatResponse(BaseModel):
 
 @router.post("/start", response_model=ChatResponse)
 async def startChat(req: ChatRequest, db=Depends(get_db)):
+    logger.info(f" NOHLOGGER : startChat start")
     # 필요시 DB 기록 로직 추가   
     reply = await startQuery(req.message, req.session_id)
     if isinstance(reply, dict):

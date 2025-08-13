@@ -1,5 +1,10 @@
 from fastapi import FastAPI
 from .routers.chat import router as chat_router
+from .common.logger import setup_logger
+
+# Initialize logger
+logger = setup_logger()
+
 
 app = FastAPI(title="FastAPI LangChain API")
 app.include_router(chat_router)

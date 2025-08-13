@@ -181,20 +181,26 @@ async def recommend_doctor(disease: str) -> dict:
     return result
 
 @tool
-async def recommend_hospital(department: str) -> dict:
+async def recommend_hospital(department: str, count: int = 0) -> dict:
     """진료과(department) 기반 병원 추천 도구
     
     Args:
         department: 필수 - 진료과명
+        count: 선택 - 추천 병원 수. 사용자가 요청한 병원 수를 지정합니다. 지정하지 않으면 기본값으로 추천합니다.
     """
 
     department = department.replace(" ", "").strip()
-    ## - Noh logger.info(f"tool:recommend_hospital, department:{department}")
+    logger.info(f"tool:recommend_hospital, department:{department}, count:{count}")
 
     if not department:
         raise ValueError("진료과명은 필수 입력값입니다.")
     
-    hospitals = getRecommandHospitals(department)
+
+    limit = LIMIT_RECOMMAND_HOSPITAL
+    if count > 0:
+        limit = count
+
+    hospitals = getRecommandHospitals(department,count)
 
     # return f"{department} 진료과는 고려대학교 병원을 추천합니다."
 
@@ -206,8 +212,10 @@ async def recommend_hospital(department: str) -> dict:
         }
     }
 
+   
+
     if hospitals:
-        result["answer"]["hospitals"] = hospitals[:LIMIT_RECOMMAND_HOSPITAL]
+        result["answer"]["hospitals"] = hospitals[:limit]
     
     return result
 

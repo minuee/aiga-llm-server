@@ -3,7 +3,7 @@ from .db import fetchData
 from ..common.logger import logger
 from app.common.common import calculate_similarity
 
-def findHospitals(department: str):
+def findHospitals(department: str,count:int):
   # 2차: 문자열 매칭해서 복수의 표준진료분야 제시해 유저가 선택
   query_old = """
     SELECT 
@@ -13,8 +13,10 @@ def findHospitals(department: str):
         SELECT 
           *, IFNULL(public_score, 0) AS total_score 
         FROM 
-          hospital_evaluation WHERE matched_dept = :department
-        ORDER BY  total_score desc LIMIT 15
+          hospital_evaluation 
+        WHERE matched_dept = :department
+        ORDER BY  total_score desc 
+        LIMIT :limitCount
     ) a
     LEFT JOIN hospital s on a.hid = s.hid
   """
@@ -28,21 +30,22 @@ def findHospitals(department: str):
         SELECT 
          hid
         FROM 
-          hospital_evaluation WHERE matched_dept = :department
+          hospital_evaluation 
+        WHERE matched_dept = :department
         GROUP BY hid
         ORDER BY  max(public_score) desc LIMIT 15
     ) a LEFT JOIN hospital s on a.hid = s.hid
   """
-  param = {"department": department}
+  param = {"department": department, "limitCount":count}
   logger.debug(f"fechData: hospital_evaluation")
   
   result = fetchData(query, param)["data"]
   return result
 
-def getRecommandHospitals(department: str):
+def getRecommandHospitals(department: str,count: int):
 
   # 2차: 문자열 매칭해서 복수의 표준진료분야 제시해 유저가 선택
-  result = findHospitals(department)
+  result = findHospitals(department,count)
 
   hospitals = []
   if len(result) > 0: 

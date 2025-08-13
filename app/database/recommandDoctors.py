@@ -32,8 +32,10 @@ def getRecommandDoctors(standard_disease:str, disease: str, evalType: EVAL_TYPE=
             LEFT JOIN doctor_basic b ON ds.doctor_id = b.doctor_id
             LEFT JOIN doctor_career d ON b.rid = d.rid
             LEFT JOIN hospital s ON b.hid = s.hid 
-        WHERE b.doctorname is not null and b.doctor_id is not null
-        ORDER BY total_score desc LIMIT 15"""
+        WHERE 
+            b.doctorname is not null and b.doctor_id is not null
+        ORDER BY total_score desc 
+        LIMIT 15"""
     else:
         prefix_query += """,b.rid, b.doctor_id, b.doctor_url, b.profileimgurl, d.education, d.career, 
         IFNULL(e.paper_score, 0) as paper_score, 
@@ -52,8 +54,10 @@ def getRecommandDoctors(standard_disease:str, disease: str, evalType: EVAL_TYPE=
             LEFT JOIN doctor_basic b ON e.doctor_id = b.doctor_id
             LEFT JOIN doctor_career d ON b.rid = d.rid
             LEFT JOIN hospital s ON b.hid = s.hid 
-        WHERE b.doctorname is not null and b.doctor_id is not null
-        ORDER BY total_score desc LIMIT 20"""
+        WHERE 
+            b.doctorname is not null and b.doctor_id is not null
+        ORDER BY total_score desc 
+        LIMIT 20"""
 
     if evalType == EVAL_TYPE.TOTAL:
         score_query = """,(IFNULL(e.patient_score, 0) * :score_weight + IFNULL(e.paper_score, 0) * :score_weight + IFNULL(e.public_score, 0) * :score_weight) AS total_score"""
