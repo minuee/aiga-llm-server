@@ -13,7 +13,7 @@ def getRecommandDoctors(standard_disease:str, disease: str, evalType: EVAL_TYPE=
     if not standard_disease:
         standard_disease = disease
 
-        prefix_query += """,b.rid, b.doctor_id, b.doctor_url, b.profileimgurl, d.education, d.career, 
+        prefix_query += """,b.rid,HEX(b.rid) AS hexrid, b.doctor_id, b.doctor_url, b.profileimgurl, d.education, d.career, 
         IFNULL(e.paper_score, 0) as paper_score, 
         IFNULL(e.patient_score, 0) as patient_score, 
         IFNULL(e.public_score, 0) as public_score, 
@@ -37,7 +37,7 @@ def getRecommandDoctors(standard_disease:str, disease: str, evalType: EVAL_TYPE=
         ORDER BY total_score desc 
         LIMIT 15"""
     else:
-        prefix_query += """,b.rid, b.doctor_id, b.doctor_url, b.profileimgurl, d.education, d.career, 
+        prefix_query += """,b.rid,HEX(b.rid) AS hexrid, b.doctor_id, b.doctor_url, b.profileimgurl, d.education, d.career, 
         IFNULL(e.paper_score, 0) as paper_score, 
         IFNULL(e.patient_score, 0) as patient_score, 
         IFNULL(e.public_score, 0) as public_score, 

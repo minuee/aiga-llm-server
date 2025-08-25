@@ -19,7 +19,7 @@ def buildDoctorQuery(name: str, hospital: str, deptname: str) -> tuple:
             SELECT 
                 s.shortName, s.address, s.lat, s.lon, s.telephone, a.doctor_id, a.doctorname, a.deptname, 
                 a.specialties, a.doctor_url, a.profileimgurl,
-                b.education, b.career, b.jsondata, a.rid,
+                b.education, b.career, b.jsondata, a.rid,a.hexrid,
                 IFNULL(e.paper_score, 0) as paper_score, 
                 IFNULL(e.patient_score, 0) as patient_score, 
                 IFNULL(e.public_score, 0) as public_score, 
@@ -31,7 +31,7 @@ def buildDoctorQuery(name: str, hospital: str, deptname: str) -> tuple:
             FROM 
                 ( 
                     SELECT
-                        rid,doctor_id,hid,doctorname,deptname,specialties,doctor_url,profileimgurl
+                        HEX(rid) AS hexrid,rid,doctor_id,hid,doctorname,deptname,specialties,doctor_url,profileimgurl
                     FROM 
                         doctor_basic
                     WHERE 
@@ -53,7 +53,7 @@ def buildDoctorQuery(name: str, hospital: str, deptname: str) -> tuple:
             SELECT 
                 s.shortName, s.address, s.lat, s.lon, s.telephone, a.doctor_id, a.doctorname, a.deptname, 
                 a.specialties, a.doctor_url, a.profileimgurl,
-                b.education, b.career, b.jsondata, a.rid,
+                b.education, b.career, b.jsondata, a.rid,a.hexrid,
                 IFNULL(e.paper_score, 0) as paper_score, 
                 IFNULL(e.patient_score, 0) as patient_score, 
                 IFNULL(e.public_score, 0) as public_score, 
@@ -65,7 +65,7 @@ def buildDoctorQuery(name: str, hospital: str, deptname: str) -> tuple:
             FROM 
                 ( 
                     SELECT
-                        rid,doctor_id,hid,doctorname,deptname,specialties,doctor_url,profileimgurl 
+                        HEX(rid) AS hexrid,rid,doctor_id,hid,doctorname,deptname,specialties,doctor_url,profileimgurl 
                     FROM 
                         doctor_basic 
                     WHERE 
@@ -87,7 +87,7 @@ def buildDoctorQuery(name: str, hospital: str, deptname: str) -> tuple:
         SELECT 
             s.shortName, s.address, s.lat, s.lon, s.telephone, a.doctor_id, a.doctorname, a.deptname,
             a.specialties, a.doctor_url, a.profileimgurl,
-            b.education, b.career, b.jsondata, a.rid,
+            b.education, b.career, b.jsondata, a.rid,a.hexrid,
             IFNULL(e.paper_score, 0) as paper_score, 
             IFNULL(e.patient_score, 0) as patient_score, 
             IFNULL(e.public_score, 0) as public_score, 
@@ -99,7 +99,7 @@ def buildDoctorQuery(name: str, hospital: str, deptname: str) -> tuple:
         FROM 
             ( 
                 SELECT
-                    rid,doctor_id,hid,doctorname,deptname,specialties,doctor_url,profileimgurl
+                    HEX(rid) AS hexrid,rid,doctor_id,hid,doctorname,deptname,specialties,doctor_url,profileimgurl
                 FROM 
                     doctor_basic
                 WHERE

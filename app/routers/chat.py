@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 from ..services.service import startQuery, stopQuery
 from ..database.db import get_db
@@ -19,10 +19,10 @@ class ChatResponse(BaseModel):
     reply: str
 
 @router.post("/start", response_model=ChatResponse)
-async def startChat(req: ChatRequest, db=Depends(get_db)):
+async def startChat(req: ChatRequest, request: Request, db=Depends(get_db)):
     logger.info(f" NOHLOGGER : startChat start")
     # 필요시 DB 기록 로직 추가   
-    reply = await startQuery(req.message, req.session_id)
+    reply = await startQuery(req.message, req.session_id, request)
     if isinstance(reply, dict):
         return JSONResponse(content=reply)
     return ChatResponse(reply=reply)

@@ -3,7 +3,7 @@ from .db import fetchData
 def getDoctorPaper(rid:str):
     """추천 의사의 논문 검색 함수"""
     
-    query = """SELECT * FROM doctor_paper where rid = :rid"""
+    query = """SELECT * FROM doctor_paper where rid = :rid and pmid is not null order by isFirstAuthor DESC, createAt limit 10"""
     param = {"rid": rid}
     result = fetchData(query, param)
     return result

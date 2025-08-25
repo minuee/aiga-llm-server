@@ -1,11 +1,15 @@
 fastapi
 uvicorn
 mysql-connector-python
+
 sqlalchemy
 dotenv
 langchain
 langchain-community
 langchain-openai
 langgraph
+langgraph-checkpoint-sqlite
+aiosqlite
 azure-identity
 openai
+redis>=5.3.0

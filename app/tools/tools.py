@@ -1,6 +1,7 @@
 import re
 import os
 from langchain_core.tools import tool, BaseTool
+from langchain_core.prompts import ChatPromptTemplate # <--- Inject방지 
 from .standard_desease_dic import STANDARD_DESEASE_DIC
 from ..database.standardSpecialty import getStandardSpecialyByDB
 from ..database.recommandDoctors import getRecommandDoctors
@@ -21,7 +22,6 @@ LIMIT_RECOMMAND_DOCTOR = int(os.environ['LIMIT_RECOMMAND_DOCTOR'])
 LIMIT_RECOMMAND_PAPER = int(os.environ['LIMIT_RECOMMAND_PAPER'])
 LIMIT_RECOMMAND_HOSPITAL = int(os.environ['LIMIT_RECOMMAND_HOSPITAL'])
 
-
 # SQL agent를 위한 별도 설정
 sql_llm = AzureChatOpenAI(
     azure_deployment=settings.azure_api_model,
@@ -37,7 +37,7 @@ sql_db = SQLDatabase.from_uri(
 )
 
 # SQL agent 생성
-sql_agent_executor = create_sql_agent(sql_llm, db=sql_db, agent_type="openai-tools", verbose=True)
+sql_agent_executor = create_sql_agent(sql_llm, db=sql_db, agent_type="openai-tools", verbose=settings.sql_agent_verbose)
 
 
 def getStandardDeseaseDictionary(disease: str):
@@ -91,8 +91,9 @@ def formattingDoctorInfo(doctors, isEntire=False):
         # else:
         #     str_edu_careers = ""
 
-        result = getDoctorPaper(doctor['rid'])
-        tritease = [data['title'] for data in result["data"]]
+        # 일단 논문 제거 아래 2줄
+        # result = getDoctorPaper(doctor['rid'])
+        # tritease = [data['title'] for data in result["data"]]
 
         # 값의 범위가 다름에 따라 최대값 구함. 
         # 최대값으로 나누어 0~5 사이의 값으로 변환(실제값 / max_value * 5)
@@ -105,6 +106,7 @@ def formattingDoctorInfo(doctors, isEntire=False):
 
         doctor = {
             "doctor_id": doctor['doctor_id'],
+            "doctor_rid": doctor['hexrid'],
             "hospital": doctor['shortName'],
             "address": doctor['address'],
             "lat": doctor['lat'],
@@ -116,7 +118,7 @@ def formattingDoctorInfo(doctors, isEntire=False):
             "url": doctor['doctor_url'],
             "education": doctor['education'],
             "career": doctor['career'],
-            "paper": tritease[:LIMIT_RECOMMAND_PAPER],
+            "paper": [], #tritease[:LIMIT_RECOMMAND_PAPER],
             "photo": doctor['profileimgurl'],
             "doctor_score": {
                 "paper_score": doctor['paper_score'],
@@ -212,13 +214,10 @@ async def recommend_hospital(department: str, count: int = 0) -> dict:
         }
     }
 
-   
-
     if hospitals:
         result["answer"]["hospitals"] = hospitals[:limit]
     
     return result
-
 
 @tool
 def search_doctor(name: str, hospital:str = "", deptname:str = "") -> dict:
@@ -325,48 +324,52 @@ async def search_doctor_for_else_question(question: str) -> dict:
     Args:
         question: 필수 - 질문내용
     """
-    
-    print(f"tool: search_doctor_for_else_question 시작 - question: {question}")
+    logger.info(f"tool: search_doctor_for_else_question 시작 - question: {question}")
+
+# SQL Agent를 위한 프롬프트 템플릿 정의
+    sql_agent_prompt = ChatPromptTemplate.from_messages(
+        [
+            (
+                "system",
+                """
+                당신은 병원 및 의사 데이터베이스 전문가입니다. 다음 테이블 정보를 참고하여 사용자의 질문에 답변해주세요.
+                
+                - 테이블 역할:
+                    - hospital: 병원 정보
+                    - doctor: 의사 정보(doctor_id, doctorname)
+                    - doctor_basic: 의사의 기본 정보
+                    - doctor_career: 의사의 학력(education), 경력(career)
+                    - doctor_paper: 의사의 논문 정보, pmid가 반드시 null이 아닌 값들 대상
+                    - patient_review: 의사에 대한 환자의 리뷰 정보
+                    
+                - 답변 규칙:
+                    - 답변은 반드시 한글로 작성해야 합니다.
+                    - 가능한 구체적인 정보를 포함하여 친절하게 설명해주세요.
+                """,
+            ),
+        ("human", "{question}"), # 사용자의 질문은 여기에 삽입됩니다.
+        ]
+    )
 
     try:
-        # SQL agent를 사용하여 질문에 대한 답변 생성
-        result = sql_agent_executor.invoke({
-            "input": f"""
-            다음은 각 테이블의 역할입니다:
-            - hospital: 병원 정보
-            - doctor: 의사 정보(doctor_id, doctorname)
-            - doctor_basic: 의사의 기본 정보
-            - doctor_career: 의사의 학력(education), 경력(career)
-            - doctor_paper: 의사의 논문 정보
-            - patient_review: 의사에 대한 환자의 리뷰 정보
+        # 1. PromptTemplate을 사용하여 지시문과 사용자 질문을 결합합니다.
+        # .format_messages()는 시스템/인간 메시지 객체의 리스트를 반환합니다.
+        # SQL Agent의 'input'은 보통 문자열을 기대하므로, .format()으로 최종 문자열을 만듭니다.
+        final_input = sql_agent_prompt.format(question=question)
 
-            질문: {question}
-            
-            위 테이블들을 활용하여 질문에 대한 답변을 찾아주세요.
-            답변은 한글로 작성하고, 가능하면 구체적인 정보를 포함해주세요.
-            """
+        # 2. SQL agent를 비동기(ainvoke)로 호출합니다.
+        result = await sql_agent_executor.ainvoke({
+             "input": final_input
         })
         
-        print(f"tool: SQL agent 결과 - {result}")
-        
-        # 결과에서 output 추출
+        logger.info(f"tool: SQL agent 결과 -n: {result}")
         answer = result.get("output", "답변을 찾을 수 없습니다.")
-        print(f"tool: answer - {answer}")
-        # 중간 과정에 사용된 툴 로그 출력 (디버깅용)
-        """ intermediate_steps = result.get("intermediate_steps", [])
-        if intermediate_steps:
-            print("🔍 [DEBUG] 사용된 내부 툴 목록:")
-            for i, (invocation, response) in enumerate(intermediate_steps):
-                print(f"  Step {i + 1}:")
-                print(f"    🧩 호출된 툴 이름: {invocation.tool}")
-                print(f"    📝 입력값: {invocation.tool_input}")
-                print(f"    📦 응답값: {response.output}") """
-        
+       
         return {
             "chat_type": "general",
             "answer": answer
         }
-        
+    
     except Exception as e:
         print(f"tool: search_doctor_for_else_question 에러 - {str(e)}")
         return {

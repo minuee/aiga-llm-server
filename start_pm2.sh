@@ -18,4 +18,4 @@ source "$VENV_ACTIVATE"
 # --reload 옵션은 start_old.sh에 있었지만, 프로덕션 환경에서는 빼는 것이 좋을 수 있습니다.
 # 우선은 기존 스크립트와 동일하게 유지합니다.
 
-exec env PYTHONUNBUFFERED=1 uvicorn app.main:app --host 0.0.0.0 --port 8001 --log-level info
+exec env PYTHONUNBUFFERED=1 uvicorn app.main:app --host 0.0.0.0 --port 8001 --log-level info --workers 1

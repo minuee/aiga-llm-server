@@ -1,5 +1,4 @@
-from fastapi import HTTPException
-from ..agent import graph
+from fastapi import HTTPException, Request
 from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage
 from langchain_core.runnables.config import RunnableConfig
 from langchain.callbacks.base import BaseCallbackHandler
@@ -76,25 +75,54 @@ class CustomCallbackHandler(BaseCallbackHandler):
 
 def makeResponse(question: str, result):
     total_tokens = None
+    input_tokens = None
+    output_tokens = None
     # 뒤에서 첫 번째 AIMessage에서 total_tokens 추출
+    #  logger.info(f"messages: {result}")
     for msg in reversed(result["messages"]):
         if isinstance(msg, AIMessage):
             # 1. response_metadata
-            if hasattr(msg, "response_metadata"):
+            if hasattr(msg, "response_metadata") and msg.response_metadata:
                 token_usage = msg.response_metadata.get("token_usage", {})
                 if "total_tokens" in token_usage:
-                    total_tokens = token_usage["total_tokens"]
+                    total_tokens = token_usage.get("total_tokens")
+                    input_tokens = token_usage.get("prompt_tokens")
+                    output_tokens = token_usage.get("completion_tokens")
+                    logger.info(f"token_usage 11: {token_usage}")
                     break
             # 2. usage_metadata
-            if hasattr(msg, "usage_metadata"):
+            if hasattr(msg, "usage_metadata") and msg.usage_metadata:
                 if "total_tokens" in msg.usage_metadata:
-                    total_tokens = msg.usage_metadata["total_tokens"]
+                    total_tokens = msg.usage_metadata.get("total_tokens")
+                    input_tokens = msg.usage_metadata.get("prompt_tokens")
+                    output_tokens = msg.usage_metadata.get("completion_tokens")
+                    logger.info(f" msg.usage_metadata 22: {msg.usage_metadata}")
                     break
             # 3. token_usage (혹시 있을 경우)
-            if hasattr(msg, "token_usage"):
+            if hasattr(msg, "token_usage") and msg.token_usage:
                 if "total_tokens" in msg.token_usage:
-                    total_tokens = msg.token_usage["total_tokens"]
+                    total_tokens = msg.token_usage.get("total_tokens")
+                    input_tokens = msg.token_usage.get("prompt_tokens")
+                    output_tokens = msg.token_usage.get("completion_tokens")
+                    logger.info(f"  msg.token_usage 33: {msg.token_usage}")
                     break
+    
+    logger.info(f"Token Usage - Input: {input_tokens}, Output: {output_tokens}, Total: {total_tokens}")
+    
+    # 캐시 사용 등으로 토큰 정보가 없을 경우 0으로 설정
+    if total_tokens is None:
+        total_tokens = 0
+    if input_tokens is None:
+        input_tokens = 0
+    if output_tokens is None:
+        output_tokens = 0
+
+    # --- START: 요약 토큰 정보 추출 로직 추가 ---
+    summary_input_tokens = result.get("summary_input_tokens", 0)
+    summary_output_tokens = result.get("summary_output_tokens", 0)
+    summary_total_tokens = result.get("summary_total_tokens", 0)
+    logger.info(f"Summary Token Usage - Input: {summary_input_tokens}, Output: {summary_output_tokens}, Total: {summary_total_tokens}")
+    # --- END: 요약 토큰 정보 추출 로직 추가 ---
     
     last_message = result["messages"][-1]
     second_to_last_message = result["messages"][-2]
@@ -133,15 +161,27 @@ def makeResponse(question: str, result):
         # 마지막 메세지의 내용을 summary에 추가
         json_response["summary"] = last_message.content
 
-        # total_tokens 추가
+        # total_tokens 추가 output_tokens,input_tokens 2025.08.14 add by Noh.S.N
+        json_response["input_tokens"] = input_tokens
+        json_response["output_tokens"] = output_tokens
         json_response["total_tokens"] = total_tokens
+        # --- 요약 토큰 추가 ---
+        json_response["summary_input_tokens"] = summary_input_tokens
+        json_response["summary_output_tokens"] = summary_output_tokens
+        json_response["summary_total_tokens"] = summary_total_tokens
         return json_response
     elif not isinstance(second_to_last_message, ToolMessage) and isinstance(last_message, AIMessage):
         response = {
             "chat_type": "general",
             "question": question,
             "answer": last_message.content,
-            "total_tokens": total_tokens
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "total_tokens": total_tokens,
+            # --- 요약 토큰 추가 ---
+            "summary_input_tokens": summary_input_tokens,
+            "summary_output_tokens": summary_output_tokens,
+            "summary_total_tokens": summary_total_tokens
         }
         return response
     else:
@@ -151,23 +191,19 @@ def makeResponse(question: str, result):
 # 실행 관리자 인스턴스 생성
 execution_manager = LangGraphExecutionManager()
 
-async def startQuery(prompt: str, session_id: str) -> dict:
+async def startQuery(prompt: str, session_id: str, request: Request) -> dict:
     try:
         logger.info(f"Starting query for session {session_id}: {prompt[:100]}...")
         
         config = {"configurable": {"thread_id": session_id }}
         cb = CustomCallbackHandler()
 
-        # result = agent.run(prompt)
-        # result = await agent.ainvoke(
-        #     {"messages": [HumanMessage(content=prompt)]})
+        # Get graph from app.state
+        current_graph = request.app.state.graph # Access graph from app.state
 
-        # result = await graph.ainvoke({"messages": [HumanMessage(content=prompt)]}, 
-        #             config=RunnableConfig(callbacks=[cb], **config))
-        # LangGraph 실행
         task = await execution_manager.start_task(
             session_id,
-            graph.ainvoke({
+            current_graph.ainvoke({
                     "messages": [HumanMessage(content=prompt)],
                     "cancelled": False
                 },
