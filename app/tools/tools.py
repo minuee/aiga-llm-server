@@ -105,33 +105,33 @@ def formattingDoctorInfo(doctors, isEntire=False):
         # max_recommendation = result["data"][0]['max_recommendation']
 
         doctor = {
-            "doctor_id": doctor['doctor_id'],
-            "doctor_rid": doctor['hexrid'],
-            "hospital": doctor['shortName'],
-            "address": doctor['address'],
-            "lat": doctor['lat'],
-            "lon": doctor['lon'],
-            "telephone": doctor['telephone'],
-            "name": doctor['doctorname'],
-            "deptname": doctor['deptname'],
-            "specialties": doctor['specialties'],
-            "url": doctor['doctor_url'],
-            "education": doctor['education'],
-            "career": doctor['career'],
+            "doctor_id": doctor.get('doctor_id'),
+            "doctor_rid": doctor.get('hexrid', ''),
+            "hospital": doctor.get('shortName', ''),
+            "address": doctor.get('address', ''),
+            "lat": doctor.get('lat'),
+            "lon": doctor.get('lon'),
+            "telephone": doctor.get('telephone', ''),
+            "name": doctor.get('doctorname', ''),
+            "deptname": doctor.get('deptname', ''),
+            "specialties": doctor.get('specialties', ''),
+            "url": doctor.get('doctor_url', ''),
+            "education": doctor.get('education', ''),
+            "career": doctor.get('career', ''),
             "paper": [], #tritease[:LIMIT_RECOMMAND_PAPER],
-            "photo": doctor['profileimgurl'],
+            "photo": doctor.get('profileimgurl', ''),
             "doctor_score": {
-                "paper_score": doctor['paper_score'],
-                "patient_score": doctor['patient_score'],
-                "public_score": doctor['public_score'],
-                # "peer_score": doctor['peer_score']
+                "paper_score": doctor.get('paper_score', 0.0),
+                "patient_score": doctor.get('patient_score', 0.0),
+                "public_score": doctor.get('public_score', 0.0),
+                # "peer_score": doctor.get('peer_score', 0.0)
                 "peer_score": 0.0
             },
             "ai_score": {
-                "kindness": doctor['kindness'] * 5.0,
-                "satisfaction": doctor['satisfaction'] * 5.0,
-                "explanation": doctor['explanation'] * 5.0,
-                "recommendation": doctor['recommendation'] * 5.0
+                "kindness": doctor.get('kindness', 0.0) * 5.0,
+                "satisfaction": doctor.get('satisfaction', 0.0) * 5.0,
+                "explanation": doctor.get('explanation', 0.0) * 5.0,
+                "recommendation": doctor.get('recommendation', 0.0) * 5.0
             },
             "review": []
         }
