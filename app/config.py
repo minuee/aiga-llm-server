@@ -19,6 +19,7 @@ class Settings:
     azure_api_version: str = os.getenv("AZURE_OPENAI_API_VERSION")
     azure_api_model: str = os.getenv("AZURE_OPENAI_MODEL")
     azure_summary_api_model: str = os.getenv("AZURE_OPENAI_SUMMARY_MODEL")
+    azure_request_timeout: int = int(os.getenv("AZURE_OPENAI_REQUEST_TIMEOUT", 60))
 
 
     validation_enable: bool = os.getenv('VALIDATION_ENABLE') == "true"

@@ -25,7 +25,6 @@ SYSTEM_PROMPT = """당신은 건강 및 의료 상담을 제공하는 전문 AI 
 5. `search_doctor_for_else_question`  
    - 그 외의 정보로 의사 정보를 요청할 때 호출
    - 학력, 경력, 논문, 환자 리뷰를 찾고자 할 때 호출한다.
-   - 논문은 테이블을 조회하지 말고 링크(https://pubmed.ncbi.nlm.nih.gov/?term:keyword)로 연결, keyword는 의사명으로만 변환해줘 
    - ❗ `question`는 사용자 질문으로 반드시 포함되어야 한다.  
 
 💡 **도구 선택 기준**

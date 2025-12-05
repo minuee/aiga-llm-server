@@ -33,7 +33,8 @@ def getRecommandDoctors(standard_disease:str, disease: str, evalType: EVAL_TYPE=
             LEFT JOIN doctor_career d ON b.rid = d.rid
             LEFT JOIN hospital s ON b.hid = s.hid 
         WHERE 
-            b.doctorname is not null and b.doctor_id is not null
+            b.doctorname is not null AND b.doctor_id is not null
+            AND b.is_active not in ( 0,'0' )
         ORDER BY total_score desc 
         LIMIT 15"""
     else:
@@ -50,7 +51,7 @@ def getRecommandDoctors(standard_disease:str, disease: str, evalType: EVAL_TYPE=
 
         postfix_query = """
         FROM 
-            (SELECT * FROM doctor_evaluation WHERE standard_spec like :disease) e
+            ( SELECT * FROM doctor_evaluation WHERE standard_spec like :disease ) e
             LEFT JOIN doctor_basic b ON e.doctor_id = b.doctor_id
             LEFT JOIN doctor_career d ON b.rid = d.rid
             LEFT JOIN hospital s ON b.hid = s.hid 

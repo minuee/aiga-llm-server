@@ -317,6 +317,63 @@ def search_doctor_by_hospital(hospital: str, deptname: str) -> dict:
     return result
 
 
+# SQL Agent를 위한 프롬프트 템플릿 정의 (모듈 레벨에서 한 번만 생성)
+SQL_AGENT_PROMPT = ChatPromptTemplate.from_messages(
+    [
+        (
+            "system",
+            """
+            당신은 MySQL 데이터베이스 전문가입니다.
+            주어진 질문에 답하기 위해, 아래 규칙과 테이블 정보를 바탕으로 SQL 쿼리를 생성하십시오.
+            특히 과거 대화 내용을 참고하여 쿼리를 생성하십시오. 병원이름, 진료과목, 의사명을 판단하여 알맞게 쿼리의 조건절을 생성해야 합니다.
+            논문을 문의해 오면 "죄송합니다 논문의 경우는 당 서비스에서 제공되지 않고 있습니다" 라는 내용을 포함해서 전체적으로 답변을 해야 합니다.
+            의사명의 경우는 like를 활용하세요 예) doctorname like '이승우%'
+
+            [엄격한 규칙]
+            1. 쿼리는 반드시 MySQL 8.x 문법으로 작성합니다.
+            2. SELECT 조회 쿼리만 생성합니다. INSERT, UPDATE, DELETE 등 다른 DML, DDL은 절대 사용하지 않습니다.
+            3. 항상 LIMIT 절을 포함하여 반환 데이터 수를 30개로 제한합니다.
+            4. 아래 [테이블 및 컬럼 정보]에 명시된 테이블과 컬럼만 사용해야 합니다. 명시되지 않은 테이블이나 컬럼은 절대 쿼리에 포함시키지 마십시오.
+            5. 만약 사용자의 질문에 해당하는 컬럼이 아래 정보에 없다면, 쿼리를 생성하지 말고 "요청하신 정보는 데이터베이스에서 찾을 수 없습니다." 라고 답변해야 합니다.
+            6. 모든 컬럼은 명시적 테이블 alias를 사용합니다.
+
+            [JOIN 규칙]
+            - doctor.rid = doctor_basic.rid
+            - hospital.hid = doctor_basic.hid
+            - hospital.hid = hospital_evaluation.hid >> LEFT JOIN
+            - doctor.doctor_id =  doctor_evaluation.doctor_id >> LEFT JOIN
+
+            [사용안하는 테이블] - 조회 금지
+            - chat_history, data_history
+            - errorlog, pwalog
+            - checkpoint_blobs, checkpoint_migrations, checkpoint_writes, checkpoints
+            - doctor_basic_logs, doctor_paper
+            - hospital_alias, hospital_all_list, hospital_bedoc_list
+            - patient_review, patient_review_source
+            - specialty, standar_dept_spec, standardspecialty
+
+            [테이블 및 컬럼 정보]
+            - hospital: 병원 정보
+                - 컬럼: hid, baseName:(병원명), address:(병원주소),lat:(위도),lon:(경도),telephone:(전화번호)
+            - hospital_evaluation : 병원의 평가정보
+                - 컬럼: hid, matched_dept : (진료과목), public_score : ( 평가점수 )
+            - doctor: 의사의 고유 ID 정보
+                - 컬럼: doctor_id, rid, name:(의사명), is_active:(활성여부:0은 제외)
+            - doctor_basic: 의사의 기본 프로필
+                - 컬럼: doctor_id, rid, doctorname:(의사명), hid:(병원ID), deptname:(진료과목), specialties:(전문분야), doctor_url:(의사홈페이지), profileimgurl:(의사사진)
+            - doctor_evaluation : 의사의 평가정보 필수정보가 아님
+                - 컬럼: doctor_id, kindness:(친절도), satisfaction:(만족도), explanation:(설명), recommendation:(추천), paper_score:(논문점수), patient_score:(환자점수), public_score:(공정점수)
+
+            [출력 형식]
+            - 2개이상의 정보가 출력시 가장 유사한 정보 1개를 우선해서 출력합니다.
+            테이블의 컬럼의 hid, rid,doctor_id,hid는 제외한 나머지 정보를 부드럽게 표현해서 출력합니다.
+            """,
+        ),
+    ("human", "{question}"), # 사용자의 질문은 여기에 삽입됩니다.
+    ]
+)
+
+
 @tool
 async def search_doctor_for_else_question(question: str) -> dict:
     """그밖의 질문(question)에 대한 응답 도구 - SQL agent를 사용하여 테이블 정보를 기반으로 답변
@@ -326,36 +383,11 @@ async def search_doctor_for_else_question(question: str) -> dict:
     """
     logger.info(f"tool: search_doctor_for_else_question 시작 - question: {question}")
 
-# SQL Agent를 위한 프롬프트 템플릿 정의
-    sql_agent_prompt = ChatPromptTemplate.from_messages(
-        [
-            (
-                "system",
-                """
-                당신은 병원 및 의사 데이터베이스 전문가입니다. 다음 테이블 정보를 참고하여 사용자의 질문에 답변해주세요.
-                
-                - 테이블 역할:
-                    - hospital: 병원 정보
-                    - doctor: 의사 정보(doctor_id, doctorname)
-                    - doctor_basic: 의사의 기본 정보
-                    - doctor_career: 의사의 학력(education), 경력(career)
-                    - doctor_paper: 의사의 논문 정보, pmid가 반드시 null이 아닌 값들 대상
-                    - patient_review: 의사에 대한 환자의 리뷰 정보
-                    
-                - 답변 규칙:
-                    - 답변은 반드시 한글로 작성해야 합니다.
-                    - 가능한 구체적인 정보를 포함하여 친절하게 설명해주세요.
-                """,
-            ),
-        ("human", "{question}"), # 사용자의 질문은 여기에 삽입됩니다.
-        ]
-    )
-
     try:
         # 1. PromptTemplate을 사용하여 지시문과 사용자 질문을 결합합니다.
         # .format_messages()는 시스템/인간 메시지 객체의 리스트를 반환합니다.
         # SQL Agent의 'input'은 보통 문자열을 기대하므로, .format()으로 최종 문자열을 만듭니다.
-        final_input = sql_agent_prompt.format(question=question)
+        final_input = SQL_AGENT_PROMPT.format(question=question)
 
         # 2. SQL agent를 비동기(ainvoke)로 호출합니다.
         result = await sql_agent_executor.ainvoke({
@@ -373,10 +405,6 @@ async def search_doctor_for_else_question(question: str) -> dict:
     except Exception as e:
         print(f"tool: search_doctor_for_else_question 에러 - {str(e)}")
         return {
-            "chat_type": "search_doctor",
-            "answer": {
-                "question": question,
-                "response": f"데이터베이스 조회 중 오류가 발생했습니다: {str(e)}",
-                "source": "error"
-            }
+            "chat_type": "general",
+            "answer": f"데이터베이스 조회 중 오류가 발생했습니다: {str(e)}"
         }

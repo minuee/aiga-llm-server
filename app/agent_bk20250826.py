@@ -1,10 +1,12 @@
 import os
 import asyncio
+import json
 from langchain_openai import AzureOpenAI, AzureChatOpenAI
 from langgraph.graph import StateGraph, END, START
 from typing import TypedDict
 from .config import settings
 from langchain_core.tools import tool, BaseTool
+from openai import APITimeoutError
 
 from typing import Literal, Annotated, Dict
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
@@ -35,7 +37,8 @@ llm = AzureChatOpenAI(
     azure_endpoint=settings.azure_endpoint,
     api_key=settings.azure_key,
     api_version=settings.azure_api_version,
-    temperature=0
+    temperature=0,
+    request_timeout=settings.azure_request_timeout
 )
 
 # --- 요약 전용 모델 ---
@@ -48,7 +51,8 @@ llm_for_summary = AzureChatOpenAI(
     azure_endpoint=settings.azure_endpoint,
     api_key=settings.azure_key,
     api_version=settings.azure_api_version,
-    temperature=0
+    temperature=0,
+    request_timeout=settings.azure_request_timeout
 )
 
 # 도구 설정
@@ -144,10 +148,10 @@ async def agent_node(state: AgentState):
             else:
                 # ToolMessage는 있지만, 직전 메시지가 유효한 AIMessage(tool_calls)가 아닌 경우
                 # (예: history rewind 등으로 인해 쌍이 깨진 경우)
-                # API 에러 방지를 위해 ToolMessage부터는 무조건 보존
-                logger.warning(f"ToolMessage found at index {last_tool_message_index} but not preceded by a valid tool-calling AIMessage. Summarizing history before ToolMessage.")
-                messages_to_summarize = messages[1 : last_tool_message_index] # ToolMessage 이전까지 요약
-                messages_to_keep = messages[last_tool_message_index:] # ToolMessage부터 끝까지 보존
+                # API 에러 방지를 위해 ToolMessage까지 요약에 포함
+                logger.warning(f"ToolMessage found at index {last_tool_message_index} but not preceded by a valid tool-calling AIMessage. Summarizing history up to and including ToolMessage.")
+                messages_to_summarize = messages[1 : last_tool_message_index + 1] # ToolMessage까지 요약
+                messages_to_keep = messages[last_tool_message_index + 1:] # ToolMessage 다음부터 끝까지 보존
         else:
             # ToolMessage가 없는 경우: 오래된 대화 요약
             logger.info("ToolMessage가 없어 메시지 수 기반으로 요약 대상을 선정합니다.")
@@ -199,7 +203,16 @@ async def agent_node(state: AgentState):
 
     # 모델 호출
     logger.info("Cache miss. Calling model...")
-    response = await model.ainvoke(messages)
+    try:
+        response = await model.ainvoke(messages)
+    except APITimeoutError:
+        logger.error("LLM call timed out. Providing fallback response.")
+        fallback_message = "죄송합니다. 현재 시스템 응답이 지연되고 있습니다. 잠시 후 다시 시도해 주세요."
+        response = AIMessage(content=fallback_message)
+    except Exception as e:
+        logger.error(f"An unexpected error occurred during LLM call: {e}. Providing fallback response.")
+        fallback_message = "죄송합니다. 서비스 처리 중 예상치 못한 오류가 발생했습니다. 잠시 후 다시 시도해 주세요."
+        response = AIMessage(content=fallback_message)
 
     # 3-4. 캐시에 저장 (예: TTL 1시간)
     await redis_client.set(cache_key, response.content, ex=3600)

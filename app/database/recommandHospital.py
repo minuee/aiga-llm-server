@@ -34,7 +34,7 @@ def findHospitals(department: str,count:int):
         WHERE matched_dept = :department
         GROUP BY hid
         ORDER BY  max(public_score) desc LIMIT 15
-    ) a LEFT JOIN hospital s on a.hid = s.hid
+      ) a LEFT JOIN hospital s on a.hid = s.hid
   """
   param = {"department": department, "limitCount":count}
   logger.debug(f"fechData: hospital_evaluation")

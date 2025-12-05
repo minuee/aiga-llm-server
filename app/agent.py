@@ -10,6 +10,7 @@ from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.prebuilt import ToolNode
 from langgraph.graph.message import MessagesState, add_messages
 from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage, AIMessage, ToolMessage
+from openai import APITimeoutError
 
 from .tools.tools import recommend_doctor, recommend_hospital, search_doctor, search_doctor_by_hospital, search_doctor_for_else_question
 from .prompt.system_prompt import SYSTEM_PROMPT
@@ -25,7 +26,8 @@ llm = AzureChatOpenAI(
     azure_endpoint=settings.azure_endpoint,
     api_key=settings.azure_key,
     api_version=settings.azure_api_version,
-    temperature=0
+    temperature=0,
+    request_timeout=settings.azure_request_timeout
 )
 
 llm_for_summary = AzureChatOpenAI(
@@ -33,7 +35,8 @@ llm_for_summary = AzureChatOpenAI(
     azure_endpoint=settings.azure_endpoint,
     api_key=settings.azure_key,
     api_version=settings.azure_api_version,
-    temperature=0
+    temperature=0,
+    request_timeout=settings.azure_request_timeout
 )
 
 tools = [recommend_doctor, recommend_hospital, search_doctor, search_doctor_by_hospital, search_doctor_for_else_question]
@@ -122,12 +125,15 @@ async def agent_node(state: AgentState):
         messages_to_keep = []
         
         if last_tool_message_index != -1:
-            if last_tool_message_index > 0 and isinstance(messages_since_last_summary[last_tool_message_index - 1], AIMessage) and messages_since_last_summary[last_tool_message_index - 1].tool_calls:
-                messages_to_summarize = messages_since_last_summary[:last_tool_message_index - 1]
-                messages_to_keep = messages_since_last_summary[last_tool_message_index - 1:]
+            ai_message_index = last_tool_message_index - 1
+            if ai_message_index >= 0 and isinstance(messages_since_last_summary[ai_message_index], AIMessage) and messages_since_last_summary[ai_message_index].tool_calls:
+                # AIMessage와 ToolMessage를 함께 보존
+                messages_to_summarize = messages_since_last_summary[:ai_message_index]
+                messages_to_keep = messages_since_last_summary[ai_message_index:]
             else:
-                messages_to_summarize = messages_since_last_summary[:last_tool_message_index]
-                messages_to_keep = messages_since_last_summary[last_tool_message_index:]
+                # ToolMessage 앞에 유효한 AIMessage가 없는 경우, ToolMessage까지 요약에 포함
+                messages_to_summarize = messages_since_last_summary[:last_tool_message_index + 1]
+                messages_to_keep = messages_since_last_summary[last_tool_message_index + 1:]
         else:
             if len(messages_since_last_summary) > MESSAGES_TO_KEEP_IF_NO_TOOL:
                 messages_to_summarize = messages_since_last_summary[:-MESSAGES_TO_KEEP_IF_NO_TOOL]
@@ -155,14 +161,20 @@ async def agent_node(state: AgentState):
                     try:
                         tool_data = json.loads(m.content)
                         summary_of_tool = "도구 결과: "
-                        data_list = tool_data.get('answer', {}).get('doctors', []) or tool_data.get('answer', {}).get('hospitals', [])
-                        if data_list:
-                            summaries = [f"[{item.get('name', '')}/{item.get('hospital', '')}/{item.get('deptname', '')}]" for item in data_list]
-                            summary_of_tool += ", ".join(summaries)
-                        elif 'answer' in tool_data and isinstance(tool_data['answer'], str):
-                            summary_of_tool += f"[{tool_data['answer']}]"
+                        answer_content = tool_data.get('answer')
+
+                        if isinstance(answer_content, dict):
+                            data_list = answer_content.get('doctors', []) or answer_content.get('hospitals', [])
+                            if data_list:
+                                summaries = [f"[{item.get('name', '')}/{item.get('hospital', '')}/{item.get('deptname', '')}]" for item in data_list]
+                                summary_of_tool += ", ".join(summaries)
+                            else:
+                                summary_of_tool += "[결과 없음]"
+                        elif isinstance(answer_content, str):
+                            summary_of_tool += f"[{answer_content}]"
                         else:
-                            summary_of_tool += "[데이터]"
+                            summary_of_tool += "[데이터 포맷 불일치]"
+                        
                         texts_for_summary.append(summary_of_tool)
                     except (json.JSONDecodeError, TypeError, KeyError):
                         # If JSON parsing fails, treat content as a raw string (likely an error message)
@@ -215,7 +227,17 @@ async def agent_node(state: AgentState):
         return {"messages": [AIMessage(content=cached_content)], "retry": state.get("retry", 0)}
 
     logger.info("Cache miss. Calling model...")
-    response = await model.ainvoke(messages)
+    try:
+        response = await model.ainvoke(messages)
+    except APITimeoutError:
+        logger.error("LLM call timed out. Providing fallback response.")
+        fallback_message = "죄송합니다. 현재 시스템 응답이 지연되고 있습니다. 잠시 후 다시 시도해 주세요."
+        response = AIMessage(content=fallback_message)
+    except Exception as e:
+        logger.error(f"An unexpected error occurred during LLM call: {e}. Providing fallback response.")
+        fallback_message = "죄송합니다. 서비스 처리 중 예상치 못한 오류가 발생했습니다. 잠시 후 다시 시도해 주세요."
+        response = AIMessage(content=fallback_message)
+
     await redis_client.set(cache_key, response.content, ex=3600)
     
     retry = state.get("retry", 0)
