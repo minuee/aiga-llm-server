@@ -11,6 +11,7 @@ from langgraph.prebuilt import ToolNode
 from langgraph.graph.message import MessagesState, add_messages
 from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage, AIMessage, ToolMessage
 from openai import APITimeoutError
+from langchain_core.runnables.config import RunnableConfig
 
 from .tools.tools import recommend_doctor, recommend_hospital, search_doctor, search_doctor_by_hospital, search_doctor_for_else_question
 from .prompt.system_prompt import SYSTEM_PROMPT
@@ -70,7 +71,7 @@ class AgentState(MessagesState):
     summary_total_tokens: Annotated[int, 0]
 
 # 1️⃣ 에이전트 노드
-async def agent_node(state: AgentState):
+async def agent_node(state: AgentState, config: RunnableConfig):
     """모델을 통해 답변하는 Agent 노드. 대화가 길어지면 요약 기능이 동작합니다."""
 
     # --- START: 대화 요약 로직 ---
@@ -192,7 +193,7 @@ async def agent_node(state: AgentState):
                 f"--- 서술형 요약 ---"
             )
 
-            summary_response = await llm_for_summary.ainvoke([HumanMessage(content=summary_prompt_text)])
+            summary_response = await llm_for_summary.ainvoke([HumanMessage(content=summary_prompt_text)], config=config)
             new_summary_snippet = summary_response.content.strip()
             
             if hasattr(summary_response, 'usage_metadata') and summary_response.usage_metadata:
@@ -228,7 +229,7 @@ async def agent_node(state: AgentState):
 
     logger.info("Cache miss. Calling model...")
     try:
-        response = await model.ainvoke(messages)
+        response = await model.ainvoke(messages, config)
     except APITimeoutError:
         logger.error("LLM call timed out. Providing fallback response.")
         fallback_message = "죄송합니다. 현재 시스템 응답이 지연되고 있습니다. 잠시 후 다시 시도해 주세요."

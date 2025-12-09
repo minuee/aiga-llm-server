@@ -1,16 +1,18 @@
 const today = new Date().toISOString().slice(0, 10);
 
 module.exports = {
-    apps: [
-      {
-        name: "aiga-llm-renual",
-        script: "./start_pm2.sh",
-        interpreter: "bash",
-        out_file: `./logs/aiga_llm_server/out-${today}.log`,
-        error_file: `./logs/aiga_llm_server/err-${today}.log`,
-        merge_logs: true,
-        // 로그 파일의 타임스탬프 비활성화 (하나의 파일에 계속 쌓이도록)
-        log_date_format: "", 
-      },
-    ],
-  };
+  apps: [
+    {
+      name: "aiga-llm-renual",
+      script: "./start_pm2.sh",
+      interpreter: "bash",
+      // pm2가 콘솔 출력을 이 파일들로 리디렉션합니다.
+      output: `./logs/aiga_llm_server/app-${today}.log`,
+      error: `./logs/aiga_llm_server/error-${today}.log`,
+      // 에러 로그와 일반 로그를 한 파일(output)에 합칩니다.
+      merge_logs: true,
+      // pm2 로그에 타임스탬프를 추가합니다.
+      log_date_format: "YYYY-MM-DD HH:mm:ss",
+    },
+  ],
+};

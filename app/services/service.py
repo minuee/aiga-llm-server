@@ -1,7 +1,6 @@
 from fastapi import HTTPException, Request
 from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage
 from langchain_core.runnables.config import RunnableConfig
-from langchain.callbacks.base import BaseCallbackHandler
 from langchain_core.messages import ToolMessage, AIMessage
 import json
 import asyncio
@@ -9,6 +8,7 @@ from typing import Dict
 from ..database.searchDoctor import getDoctorById
 from ..tools.tools import formattingDoctorInfo
 from ..common.logger import logger
+from ..common.callbacks import TokenCountingCallback
 import re
 
 # 상태 관리를 위한 클래스
@@ -43,37 +43,8 @@ class LangGraphExecutionManager:
     
     def get_task(self, session_id: str) -> asyncio.Task:
         return self._tasks.get(session_id)
-    
-# 콜백 핸들러
-class CustomCallbackHandler(BaseCallbackHandler):
-    def __init__(self):
-        self.logs = []
 
-    def on_chain_start(self, serialized, inputs, **kwargs):
-        ## - Noh logger.info(f"Chain started with input: {inputs}")
-        self.logs.append({"event": "start", "data": inputs})
-
-    def on_chain_end(self, outputs, **kwargs):
-        ## - Noh logger.info(f"Chain ended with output: {outputs}")
-        self.logs.append({"event": "end", "data": outputs})
-
-    def on_tool_start(self, serialized, input_str, **kwargs):
-        logger.info(f"Tool call started with input: {input_str}")
-        # self.logs.append({"event": "tool_start", "data": input_str})
-
-    def on_tool_end(self, outputs, **kwargs):
-        ## - Noh logger.info(f"Tool call ended with output: {outputs}")
-        self.logs.append({"event": "tool_end", "data": outputs})
-
-    def on_text(self, text, **kwargs):
-        ## - Noh logger.info(f"Text received: {text}")
-        self.logs.append({"event": "text", "data": text})
-
-    def on_error(self, error, **kwargs):
-        logger.error(f"Error in callback: {error}")
-        self.logs.append({"event": "error", "data": str(error)})
-
-def makeResponse(question: str, result):
+def makeResponse(question: str, result, token_counter: TokenCountingCallback):
     total_tokens = None
     input_tokens = None
     output_tokens = None
@@ -123,6 +94,9 @@ def makeResponse(question: str, result):
     summary_total_tokens = result.get("summary_total_tokens", 0)
     logger.info(f"Summary Token Usage - Input: {summary_input_tokens}, Output: {summary_output_tokens}, Total: {summary_total_tokens}")
     # --- END: 요약 토큰 정보 추출 로직 추가 ---
+
+    logger.info(f"Grand Total Token Usage2 - Input: {token_counter.total_prompt_tokens}, Output: {token_counter.total_completion_tokens}, Total: {token_counter.total_tokens}")
+    
     
     last_message = result["messages"][-1]
     second_to_last_message = result["messages"][-2]
@@ -169,6 +143,11 @@ def makeResponse(question: str, result):
         json_response["summary_input_tokens"] = summary_input_tokens
         json_response["summary_output_tokens"] = summary_output_tokens
         json_response["summary_total_tokens"] = summary_total_tokens
+
+        # --- grand_total_tokens 추가 ---
+        json_response["grand_total_input_tokens"] = token_counter.total_prompt_tokens
+        json_response["grand_total_output_tokens"] = token_counter.total_completion_tokens
+        json_response["grand_total_tokens"] = token_counter.total_tokens
         return json_response
     elif not isinstance(second_to_last_message, ToolMessage) and isinstance(last_message, AIMessage):
         response = {
@@ -181,7 +160,11 @@ def makeResponse(question: str, result):
             # --- 요약 토큰 추가 ---
             "summary_input_tokens": summary_input_tokens,
             "summary_output_tokens": summary_output_tokens,
-            "summary_total_tokens": summary_total_tokens
+            "summary_total_tokens": summary_total_tokens,
+            # --- grand_total_tokens 추가 ---
+            "grand_total_input_tokens": token_counter.total_prompt_tokens,
+            "grand_total_output_tokens": token_counter.total_completion_tokens,
+            "grand_total_tokens": token_counter.total_tokens,
         }
         return response
     else:
@@ -195,8 +178,13 @@ async def startQuery(prompt: str, session_id: str, request: Request) -> dict:
     try:
         logger.info(f"Starting query for session {session_id}: {prompt[:100]}...")
         
-        config = {"configurable": {"thread_id": session_id }}
-        cb = CustomCallbackHandler()
+        token_counter = TokenCountingCallback()
+
+        # 콜백과 쓰레드 ID를 하나의 config 딕셔너리로 구성
+        config = {
+            "callbacks": [token_counter],
+            "configurable": {"thread_id": session_id}
+        }
 
         # Get graph from app.state
         current_graph = request.app.state.graph # Access graph from app.state
@@ -207,12 +195,12 @@ async def startQuery(prompt: str, session_id: str, request: Request) -> dict:
                     "messages": [HumanMessage(content=prompt)],
                     "cancelled": False
                 },
-                config=RunnableConfig(callbacks=[cb], configurable=config["configurable"])
+                config=config
             )
         )
 
         result = await task
-        response = makeResponse(prompt, result)
+        response = makeResponse(prompt, result, token_counter)
         logger.info(f"Query completed for session {session_id}")
         return response
         

@@ -5,7 +5,7 @@ from .common.logger import logger
 load_dotenv(override=True)
 
 env_vars = dotenv_values()
-logger.info(f"전체 .env 값 확인: {env_vars}")
+## logger.info(f"전체 .env 값 확인: {env_vars}")
 
 class Settings:
     mysql_host: str = os.getenv("MYSQL_HOST")

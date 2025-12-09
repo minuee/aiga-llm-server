@@ -74,9 +74,12 @@ def setup_logger(log_level: str = "INFO"):
         log_dir = Path.cwd() / "logs" / "aiga_llm_server"
         log_dir.mkdir(parents=True, exist_ok=True)
     
-    # 로거 생성 (루트 로거)
-    logger = logging.getLogger()
+    # 'aiga_llm_server'라는 이름의 전용 로거 생성 (루트 로거와 충돌 방지)
+    logger = logging.getLogger("aiga_llm_server")
     logger.setLevel(getattr(logging, log_level.upper()))
+
+    # 상위 로거(루트)로의 이벤트 전파 방지 (중복 로그 출력 방지)
+    logger.propagate = False
 
     # 기존 핸들러 제거
     for handler in logger.handlers[:]:

@@ -14,8 +14,7 @@ if [ ! -f "$VENV_ACTIVATE" ]; then
 fi
 source "$VENV_ACTIVATE"
 
-# uvicorn 실행 (포그라운드)
-# --reload 옵션은 start_old.sh에 있었지만, 프로덕션 환경에서는 빼는 것이 좋을 수 있습니다.
-# 우선은 기존 스크립트와 동일하게 유지합니다.
-
-exec env PYTHONUNBUFFERED=1 uvicorn app.main:app --host 0.0.0.0 --port 8001 --log-level info --workers 1
+echo "새로운 서버 프로세스 시작 중... pm2"
+# pm2가 로그를 관리하므로, 여기에는 리디렉션이 없습니다.
+# --log-level info는 uvicorn의 기본 로그를 활성화합니다.
+exec env PYTHONUNBUFFERED=1 uvicorn app.main:app --host 0.0.0.0 --port 8001 --workers 1 --log-level info

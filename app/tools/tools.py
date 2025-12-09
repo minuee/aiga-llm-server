@@ -192,7 +192,7 @@ async def recommend_hospital(department: str, count: int = 0) -> dict:
     """
 
     department = department.replace(" ", "").strip()
-    logger.info(f"tool:recommend_hospital, department:{department}, count:{count}")
+    logger.info(f"tool:recommend_hospital 시작 , department:{department}, count:{count}")
 
     if not department:
         raise ValueError("진료과명은 필수 입력값입니다.")
@@ -232,8 +232,7 @@ def search_doctor(name: str, hospital:str = "", deptname:str = "") -> dict:
     name = name.replace(" ", "").strip()
     hospital = hospital.replace(" ", "").strip()
     deptname = deptname.replace(" ", "").strip()
-    
-    ## - Noh logger.info(f"tool:search_doctor, name:{name}, hospital:{hospital}, deptname:{deptname}")
+    logger.info(f"tool:search_doctor 시작 : name:{name}, hospital:{hospital}, deptname:{deptname}")
     
     if not name:
         raise ValueError("의사명은 필수 입력값입니다.")
@@ -285,7 +284,7 @@ def search_doctor_by_hospital(hospital: str, deptname: str) -> dict:
     hospital = hospital.replace(" ", "").strip()
     deptname = deptname.replace(" ", "").strip()
     
-    ## - Noh logger.info(f"tool:search_doctor_by_hospital, hospital:{hospital}, deptname:{deptname}")
+    logger.info(f"tool:search_doctor_by_hospital 시작 : hospital:{hospital}, deptname:{deptname}")
     
     if not hospital:
         raise ValueError("병원명은 필수 입력값입니다.")
@@ -323,19 +322,19 @@ SQL_AGENT_PROMPT = ChatPromptTemplate.from_messages(
         (
             "system",
             """
-            당신은 MySQL 데이터베이스 전문가입니다.
-            주어진 질문에 답하기 위해, 아래 규칙과 테이블 정보를 바탕으로 SQL 쿼리를 생성하십시오.
-            특히 과거 대화 내용을 참고하여 쿼리를 생성하십시오. 병원이름, 진료과목, 의사명을 판단하여 알맞게 쿼리의 조건절을 생성해야 합니다.
-            논문을 문의해 오면 "죄송합니다 논문의 경우는 당 서비스에서 제공되지 않고 있습니다" 라는 내용을 포함해서 전체적으로 답변을 해야 합니다.
-            의사명의 경우는 like를 활용하세요 예) doctorname like '이승우%'
+            너는 MySQL 데이터베이스 전문가야
+            주어진 질문에 답하기 위해, 아래 규칙과 테이블 정보를 바탕으로 SQL 쿼리를 생성.
+            특히 과거 대화 내용을 참고하여 쿼리를 생성하고 병원이름, 진료과목, 의사명을 판단하여 알맞게 쿼리의 조건절을 생성해야 한다.
+            논문을 문의해 오면 "죄송합니다 논문의 경우는 당 서비스에서 제공되지 않고 있습니다" 라는 내용을 포함해서 전체적으로 답변을 해야 한다.
+            의사명의 경우는 like를 활용하세요 예) doctorname like '홍길동%'
 
             [엄격한 규칙]
-            1. 쿼리는 반드시 MySQL 8.x 문법으로 작성합니다.
-            2. SELECT 조회 쿼리만 생성합니다. INSERT, UPDATE, DELETE 등 다른 DML, DDL은 절대 사용하지 않습니다.
-            3. 항상 LIMIT 절을 포함하여 반환 데이터 수를 30개로 제한합니다.
-            4. 아래 [테이블 및 컬럼 정보]에 명시된 테이블과 컬럼만 사용해야 합니다. 명시되지 않은 테이블이나 컬럼은 절대 쿼리에 포함시키지 마십시오.
-            5. 만약 사용자의 질문에 해당하는 컬럼이 아래 정보에 없다면, 쿼리를 생성하지 말고 "요청하신 정보는 데이터베이스에서 찾을 수 없습니다." 라고 답변해야 합니다.
-            6. 모든 컬럼은 명시적 테이블 alias를 사용합니다.
+            1. 쿼리는 반드시 MySQL 8.x 문법으로 작성한다.
+            2. SELECT 조회 쿼리만 생성합니다. INSERT, UPDATE, DELETE 등 다른 DML, DDL은 절대 사용하지 않는다.
+            3. 항상 LIMIT 절을 포함하여 반환 데이터 수를 30개로 제한한다.
+            4. 아래 [테이블 및 컬럼 정보]에 명시된 테이블과 컬럼만 사용해야 한다. 명시되지 않은 테이블이나 컬럼은 절대 쿼리에 포함시키지 말라.
+            5. 만약 사용자의 질문에 해당하는 컬럼이 아래 정보에 없다면, 쿼리를 생성하지 말고 "요청하신 정보는 찾을 수 없습니다." 라고 답변해야 한다.
+            6. 모든 컬럼은 명시적 테이블 alias를 사용한다.
 
             [JOIN 규칙]
             - doctor.rid = doctor_basic.rid
@@ -365,8 +364,8 @@ SQL_AGENT_PROMPT = ChatPromptTemplate.from_messages(
                 - 컬럼: doctor_id, kindness:(친절도), satisfaction:(만족도), explanation:(설명), recommendation:(추천), paper_score:(논문점수), patient_score:(환자점수), public_score:(공정점수)
 
             [출력 형식]
-            - 2개이상의 정보가 출력시 가장 유사한 정보 1개를 우선해서 출력합니다.
-            테이블의 컬럼의 hid, rid,doctor_id,hid는 제외한 나머지 정보를 부드럽게 표현해서 출력합니다.
+            - 2개이상의 정보가 출력시 가장 유사한 정보 1개를 우선해서 출력한다.
+            - 테이블의 컬럼의 hid,rid,doctor_id,hid는 제외한 나머지 정보를 부드럽게 표현해서 출력한다.
             """,
         ),
     ("human", "{question}"), # 사용자의 질문은 여기에 삽입됩니다.
