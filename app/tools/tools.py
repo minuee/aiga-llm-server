@@ -333,11 +333,12 @@ SQL_AGENT_PROMPT = ChatPromptTemplate.from_messages(
             2. SELECT 조회 쿼리만 생성합니다. INSERT, UPDATE, DELETE 등 다른 DML, DDL은 절대 사용하지 않는다.
             3. 항상 LIMIT 절을 포함하여 반환 데이터 수를 30개로 제한한다.
             4. 아래 [테이블 및 컬럼 정보]에 명시된 테이블과 컬럼만 사용해야 한다. 명시되지 않은 테이블이나 컬럼은 절대 쿼리에 포함시키지 말라.
-            5. 만약 사용자의 질문에 해당하는 컬럼이 아래 정보에 없다면, 쿼리를 생성하지 말고 "요청하신 정보는 찾을 수 없습니다." 라고 답변해야 한다.
+            5. 만약 사용자의 질문에 해당하는 정보(예: 출신학교, 국적)를 [테이블 및 컬럼 정보]에서 찾을 수 없다면, 쿼리를 생성하지 말고, "제가 가진 정보에서는 요청하신 내용이 포함되어 있지 않아 답변 드리기 어렵습니다." 와 같이 구체적으로 답변해야 한다.
             6. 모든 컬럼은 명시적 테이블 alias를 사용한다.
 
             [JOIN 규칙]
-            - doctor.rid = doctor_basic.rid
+            - doctor.rid = doctor_basic.rid // and 조건에 doctor_basic.is_active not in ( 0,'0' ) 고정
+            - doctor_basid.rid = doctor_career.rid // and 조건에 doctor_basic.is_active not in ( 0,'0' ) 고정
             - hospital.hid = doctor_basic.hid
             - hospital.hid = hospital_evaluation.hid >> LEFT JOIN
             - doctor.doctor_id =  doctor_evaluation.doctor_id >> LEFT JOIN
@@ -349,7 +350,7 @@ SQL_AGENT_PROMPT = ChatPromptTemplate.from_messages(
             - doctor_basic_logs, doctor_paper
             - hospital_alias, hospital_all_list, hospital_bedoc_list
             - patient_review, patient_review_source
-            - specialty, standar_dept_spec, standardspecialty
+            - specialty, standard_dept_spec, standardspecialty
 
             [테이블 및 컬럼 정보]
             - hospital: 병원 정보
@@ -358,14 +359,17 @@ SQL_AGENT_PROMPT = ChatPromptTemplate.from_messages(
                 - 컬럼: hid, matched_dept : (진료과목), public_score : ( 평가점수 )
             - doctor: 의사의 고유 ID 정보
                 - 컬럼: doctor_id, rid, name:(의사명), is_active:(활성여부:0은 제외)
-            - doctor_basic: 의사의 기본 프로필
+            - doctor_basic: 의사의 기본 프로필 and 조건에 is_active not in ( 0,'0' ) 고정
                 - 컬럼: doctor_id, rid, doctorname:(의사명), hid:(병원ID), deptname:(진료과목), specialties:(전문분야), doctor_url:(의사홈페이지), profileimgurl:(의사사진)
+            - doctor_career: 의사의 학력, 경력, 기타정보 json형태이나 string 문자열로 저장되어 있음
+                - 컬럼: rid, education(학력),career(경력),etc(기타 학회,학술,수상,저서,언론,기타)
             - doctor_evaluation : 의사의 평가정보 필수정보가 아님
                 - 컬럼: doctor_id, kindness:(친절도), satisfaction:(만족도), explanation:(설명), recommendation:(추천), paper_score:(논문점수), patient_score:(환자점수), public_score:(공정점수)
 
             [출력 형식]
             - 2개이상의 정보가 출력시 가장 유사한 정보 1개를 우선해서 출력한다.
             - 테이블의 컬럼의 hid,rid,doctor_id,hid는 제외한 나머지 정보를 부드럽게 표현해서 출력한다.
+            - **테이블의 컬럼에서 긴 문자열 데이터(예: 학력, 경력, 기타정보)는 사용자의 질문과 관련된 핵심 내용을 200자 이내로 간결하게 요약하여 제공해야 한다.**
             """,
         ),
     ("human", "{question}"), # 사용자의 질문은 여기에 삽입됩니다.

@@ -36,6 +36,7 @@ def buildDoctorQuery(name: str, hospital: str, deptname: str) -> tuple:
                         doctor_basic
                     WHERE 
                         doctor_id is not null and hid = :hid and deptname = :deptname and doctorname = :name 
+                        AND is_active not in ( 0,'0' )
                 ) a
                 LEFT JOIN doctor_career b ON a.rid = b.rid 
                 LEFT JOIN (
@@ -70,6 +71,7 @@ def buildDoctorQuery(name: str, hospital: str, deptname: str) -> tuple:
                         doctor_basic 
                     WHERE 
                         doctor_id is not null and hid = :hid and doctorname = :name 
+                        AND is_active not in ( 0,'0' )
                 ) a
                 LEFT JOIN doctor_career b ON a.rid = b.rid 
                 LEFT JOIN (
@@ -104,6 +106,7 @@ def buildDoctorQuery(name: str, hospital: str, deptname: str) -> tuple:
                     doctor_basic
                 WHERE
                     doctor_id is not null and doctorname = :name 
+                    AND is_active not in ( 0,'0' )
             ) a
             LEFT JOIN doctor_career b ON a.rid = b.rid 
             LEFT JOIN (
@@ -157,7 +160,7 @@ def getSearchDoctorsByHospitalAndDept(hospital: str, deptname: str) -> dict:
             IFNULL(e.explanation, 0) as explanation, 
             IFNULL(e.recommendation, 0) as recommendation
         FROM 
-            ( SELECT * FROM doctor_basic WHERE doctor_id is not null and hid = :hid and deptname = :deptname) a
+            ( SELECT * FROM doctor_basic WHERE doctor_id is not null and hid = :hid and deptname = :deptname AND is_active not in ( 0,'0' ) ) a
             LEFT JOIN doctor_career b ON a.rid = b.rid 
             LEFT JOIN (
                 SELECT 

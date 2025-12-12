@@ -13,6 +13,11 @@ module.exports = {
       merge_logs: true,
       // pm2 로그에 타임스탬프를 추가합니다.
       log_date_format: "YYYY-MM-DD HH:mm:ss",
+      // 환경 변수 추가
+      env: {
+        "NODE_ENV": "production",
+        "LOG_HANDLER_TYPE": "pm2"
+      }
     },
   ],
 };

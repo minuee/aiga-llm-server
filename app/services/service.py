@@ -9,6 +9,7 @@ from ..database.searchDoctor import getDoctorById
 from ..tools.tools import formattingDoctorInfo
 from ..common.logger import logger
 from ..common.callbacks import TokenCountingCallback
+from ..config import settings
 import re
 
 # 상태 관리를 위한 클래스
@@ -144,7 +145,7 @@ def makeResponse(question: str, result, token_counter: TokenCountingCallback):
         json_response["summary_output_tokens"] = summary_output_tokens
         json_response["summary_total_tokens"] = summary_total_tokens
 
-        # --- grand_total_tokens 추가 ---
+        # --- grand_total_tokens 추가  이는 보고된토큰(툴작업등 메인작업), 요약토큰(5000자이상시), 최초 agent검토토큰까지 모두 포함된 총액으로 보면 됨---
         json_response["grand_total_input_tokens"] = token_counter.total_prompt_tokens
         json_response["grand_total_output_tokens"] = token_counter.total_completion_tokens
         json_response["grand_total_tokens"] = token_counter.total_tokens
@@ -171,11 +172,15 @@ def makeResponse(question: str, result, token_counter: TokenCountingCallback):
         # 예상치 못한 타입일 때 명확하게 에러 반환
         raise HTTPException(status_code=500, detail=f"Unexpected message type: {type(last_message)}")    
 
+from ..common.schemas import ChatRequest
+
 # 실행 관리자 인스턴스 생성
 execution_manager = LangGraphExecutionManager()
 
-async def startQuery(prompt: str, session_id: str, request: Request) -> dict:
+async def startQuery(req: ChatRequest, request: Request) -> dict:
     try:
+        prompt = req.message
+        session_id = req.session_id
         logger.info(f"Starting query for session {session_id}: {prompt[:100]}...")
         
         token_counter = TokenCountingCallback()
@@ -188,11 +193,14 @@ async def startQuery(prompt: str, session_id: str, request: Request) -> dict:
 
         # Get graph from app.state
         current_graph = request.app.state.graph # Access graph from app.state
+        
+        locale = req.locale or settings.default_locale
 
         task = await execution_manager.start_task(
             session_id,
             current_graph.ainvoke({
                     "messages": [HumanMessage(content=prompt)],
+                    "locale": locale,
                     "cancelled": False
                 },
                 config=config

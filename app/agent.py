@@ -17,9 +17,11 @@ from .tools.tools import recommend_doctor, recommend_hospital, search_doctor, se
 from .prompt.system_prompt import SYSTEM_PROMPT
 from .prompt.validation_prompt import VALIDATION_PROMPT
 from .common.logger import logger
+from .tools.language_set import LANGUAGE_SET
 
 import aiosqlite
 import redis.asyncio as redis
+import json
 
 # 모델 설정
 llm = AzureChatOpenAI(
@@ -41,6 +43,7 @@ llm_for_summary = AzureChatOpenAI(
 )
 
 tools = [recommend_doctor, recommend_hospital, search_doctor, search_doctor_by_hospital, search_doctor_for_else_question]
+tool_map = {t.name: t for t in tools}
 model = llm.bind_tools(tools)
 
 redis_client = redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
@@ -64,6 +67,7 @@ def summarize_messages_for_cache_key(messages):
 
 class AgentState(MessagesState):
     messages: Annotated[list, add_messages]
+    locale: Annotated[str, ""]
     retry: Annotated[int, 0]
     valid: Annotated[bool, False]
     summary_input_tokens: Annotated[int, 0]
@@ -220,6 +224,26 @@ async def agent_node(state: AgentState, config: RunnableConfig):
 
     # --- END: 대화 요약 로직 ---
 
+    # --- START: Dynamic Language Rule Injection ---
+    locale = state.get("locale") or "ko"  # Default to 'ko'
+    
+    # Use the imported LANGUAGE_SET
+    language_name = LANGUAGE_SET.get(locale, LANGUAGE_SET["ko"])
+
+    language_rule = f"""
+
+**Response Language Rule**
+- The AI counselor's final response MUST be generated in **{language_name}**.
+- This applies in all situations, including summarizing tool results or providing direct answers.
+"""
+    # Find the SystemMessage and append the rule if it doesn't exist
+    for i, msg in enumerate(messages):
+        if isinstance(msg, SystemMessage):
+            if "**Response Language Rule**" not in msg.content:
+                messages[i] = SystemMessage(content=msg.content + language_rule)
+            break
+    # --- END: Dynamic Language Rule Injection ---
+
     # 캐시 및 모델 호출 (요약이 적용된 messages 사용)
     cache_key = f"chat:{summarize_messages_for_cache_key(messages)}"
     cached_content = await redis_client.get(cache_key)
@@ -299,6 +323,47 @@ async def validate_node(state: AgentState) -> AgentState:
     
     return {"messages": state["messages"], "retry": retry + 1, "valid": False}
 
+# This will be our new tool node
+async def custom_tool_node(state: AgentState):
+    """
+    Custom tool node that injects locale-based language instructions
+    into specific tool calls before execution.
+    """
+    tool_messages = []
+    # The last message should be the AI message with tool calls
+    last_message = state["messages"][-1]
+    
+    # Get the locale from the state
+    locale = state.get("locale") or "ko"
+    language_name = LANGUAGE_SET.get(locale, LANGUAGE_SET["ko"])
+    
+    for tool_call in last_message.tool_calls:
+        tool_name = tool_call["name"]
+        tool_args = tool_call["args"]
+        
+        # Special handling for search_doctor_for_else_question
+        if tool_name == "search_doctor_for_else_question":
+            # Inject language instruction into the question
+            language_instruction = f"\n\n[중요] 최종 답변은 반드시 {language_name}(으)로, 자연스러운 문장으로 만들어주세요."
+            tool_args["question"] += language_instruction
+
+        # Execute the tool
+        tool_to_call = tool_map.get(tool_name)
+        if tool_to_call:
+            try:
+                # Use .ainvoke for async tools
+                observation = await tool_to_call.ainvoke(tool_args)
+            except Exception as e:
+                observation = f"Error executing tool {tool_name}: {e}"
+        else:
+            observation = f"Tool {tool_name} not found."
+            
+        tool_messages.append(
+            ToolMessage(content=json.dumps(observation, ensure_ascii=False), tool_call_id=tool_call["id"])
+        )
+        
+    return {"messages": tool_messages}
+
 # 4️⃣ 재시도 분기 처리 함수
 def should_retry(state: AgentState) -> Literal["agent", END]:
     """검증이후에 분기하는 edge"""
@@ -312,9 +377,8 @@ def should_retry(state: AgentState) -> Literal["agent", END]:
 async def get_compiled_graph():
     workflow = StateGraph(AgentState)
 
-    tool_node = ToolNode(tools=tools)
     workflow.add_node("agent", agent_node)
-    workflow.add_node("tools", tool_node)
+    workflow.add_node("tools", custom_tool_node)
     workflow.add_node("validate", validate_node)
 
     workflow.add_edge(START, "agent")

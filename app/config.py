@@ -21,6 +21,7 @@ class Settings:
     azure_summary_api_model: str = os.getenv("AZURE_OPENAI_SUMMARY_MODEL")
     azure_request_timeout: int = int(os.getenv("AZURE_OPENAI_REQUEST_TIMEOUT", 60))
 
+    default_locale: str = os.getenv("DEFAULT_LOCALE", "ko")
 
     validation_enable: bool = os.getenv('VALIDATION_ENABLE') == "true"
     validation_retry_limit: int = int(os.getenv('VALIDATION_RETRY_LIMIT', 3))

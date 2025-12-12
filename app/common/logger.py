@@ -91,54 +91,59 @@ def setup_logger(log_level: str = "INFO"):
     console_formatter = CustomFormatter()
     console_handler.setFormatter(console_formatter)
     logger.addHandler(console_handler)
-    
-    # 파일 핸들러 (24시간마다 자동 로테이션)
-    try:
-        # TimedRotatingFileHandler 사용 - 매일 자정에 새 파일 생성
-        file_handler = logging.handlers.TimedRotatingFileHandler(
-            filename=log_dir / "app.log",  # 기본 파일명
-            when='midnight',  # 자정에 로테이션
-            interval=1,  # 1일마다
-            backupCount=30,  # 30일치 보관
-            encoding='utf-8',
-            delay=False  # 즉시 파일 생성
-        )
-        
-        # 로테이션 시 파일명 포맷 설정
-        file_handler.suffix = "%Y-%m-%d"  # 파일명 뒤에 날짜 추가
-        file_handler.namer = lambda name: name.replace(".log", "") + ".log"  # 기본 .log 유지
-        
-        file_handler.setLevel(logging.DEBUG)
-        file_formatter = logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s',
-            datefmt='%Y-%m-%d %H:%M:%S'
-        )
-        file_handler.setFormatter(file_formatter)
-        logger.addHandler(file_handler)
-        
-        # 에러 전용 파일 핸들러 (24시간마다 자동 로테이션)
-        error_handler = logging.handlers.TimedRotatingFileHandler(
-            filename=log_dir / "error.log",  # 기본 파일명
-            when='midnight',  # 자정에 로테이션
-            interval=1,  # 1일마다
-            backupCount=30,  # 30일치 보관
-            encoding='utf-8',
-            delay=False  # 즉시 파일 생성
-        )
-        
-        # 로테이션 시 파일명 포맷 설정
-        error_handler.suffix = "%Y-%m-%d"  # 파일명 뒤에 날짜 추가
-        error_handler.namer = lambda name: name.replace(".log", "") + ".log"  # 기본 .log 유지
-        
-        error_handler.setLevel(logging.ERROR)
-        error_handler.setFormatter(file_formatter)
-        logger.addHandler(error_handler)
-        
-        logger.info(f"Logger initialized with 24-hour rotation. Log directory: {log_dir}")
-        
-    except (PermissionError, OSError) as e:
-        # 파일 생성 실패시 콘솔에만 출력
-        logger.warning(f"Log file creation failed: {e}. Console output only.")
+
+    # LOG_HANDLER_TYPE 환경 변수를 확인하여 파일 핸들러 추가 여부 결정
+    log_handler_type = os.getenv("LOG_HANDLER_TYPE", "default")
+    if log_handler_type != "pm2":
+        # 파일 핸들러 (24시간마다 자동 로테이션)
+        try:
+            # TimedRotatingFileHandler 사용 - 매일 자정에 새 파일 생성
+            file_handler = logging.handlers.TimedRotatingFileHandler(
+                filename=log_dir / "app.log",  # 기본 파일명
+                when='midnight',  # 자정에 로테이션
+                interval=1,  # 1일마다
+                backupCount=30,  # 30일치 보관
+                encoding='utf-8',
+                delay=False  # 즉시 파일 생성
+            )
+            
+            # 로테이션 시 파일명 포맷 설정
+            file_handler.suffix = "%Y-%m-%d"  # 파일명 뒤에 날짜 추가
+            file_handler.namer = lambda name: name.replace(".log", "") + ".log"  # 기본 .log 유지
+            
+            file_handler.setLevel(logging.DEBUG)
+            file_formatter = logging.Formatter(
+                '%(asctime)s - %(name)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s',
+                datefmt='%Y-%m-%d %H:%M:%S'
+            )
+            file_handler.setFormatter(file_formatter)
+            logger.addHandler(file_handler)
+            
+            # 에러 전용 파일 핸들러 (24시간마다 자동 로테이션)
+            error_handler = logging.handlers.TimedRotatingFileHandler(
+                filename=log_dir / "error.log",  # 기본 파일명
+                when='midnight',  # 자정에 로테이션
+                interval=1,  # 1일마다
+                backupCount=30,  # 30일치 보관
+                encoding='utf-8',
+                delay=False  # 즉시 파일 생성
+            )
+            
+            # 로테이션 시 파일명 포맷 설정
+            error_handler.suffix = "%Y-%m-%d"  # 파일명 뒤에 날짜 추가
+            error_handler.namer = lambda name: name.replace(".log", "") + ".log"  # 기본 .log 유지
+            
+            error_handler.setLevel(logging.ERROR)
+            error_handler.setFormatter(file_formatter)
+            logger.addHandler(error_handler)
+            
+            logger.info(f"Logger initialized with file handlers. Log directory: {log_dir}")
+            
+        except (PermissionError, OSError) as e:
+            # 파일 생성 실패시 콘솔에만 출력
+            logger.warning(f"Log file creation failed: {e}. Console output only.")
+    else:
+        logger.info("LOG_HANDLER_TYPE is 'pm2'. Skipping file handler setup. PM2 will manage log files.")
     
     return logger
 
