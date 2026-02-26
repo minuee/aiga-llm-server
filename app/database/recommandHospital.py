@@ -1,72 +1,71 @@
 import os
 from .db import fetchData
 from ..common.logger import logger
-from app.common.common import calculate_similarity
+from app.common.common import calculate_similarity, haversine_distance
+from typing import Union, List
 
-def findHospitals(department: str,count:int):
-  # 2차: 문자열 매칭해서 복수의 표준진료분야 제시해 유저가 선택
-  query_old = """
-    SELECT 
-      a.hid as hospital_id, s.shortName as name, s.address, s.lat, s.lon, s.telephone 
+def findHospitals(department: Union[str, List[str]], count:int):
+  base_query = """
+    SELECT
+      a.hid as hospital_id, s.shortname as hospital_short_name, s.address, s.lat, s.lon, s.telephone,s.hospital_site, s.hid
     FROM
       (
-        SELECT 
-          *, IFNULL(public_score, 0) AS total_score 
-        FROM 
-          hospital_evaluation 
-        WHERE matched_dept = :department
-        ORDER BY  total_score desc 
-        LIMIT :limitCount
-    ) a
-    LEFT JOIN hospital s on a.hid = s.hid
-  """
-
-  # 2025.08.08 쿼리 수정 by Noh.S.N
-  query = """
-    SELECT 
-      a.hid as hospital_id, s.shortName as name, s.address, s.lat, s.lon, s.telephone 
-    FROM
-      (
-        SELECT 
+        SELECT
          hid
-        FROM 
-          hospital_evaluation 
-        WHERE matched_dept = :department
+        FROM
+          hospital_evaluation
+        WHERE {dept_where_clause}
         GROUP BY hid
-        ORDER BY  max(public_score) desc LIMIT 15
+        ORDER BY max(public_score) desc LIMIT :limitCount
       ) a LEFT JOIN hospital s on a.hid = s.hid
   """
-  param = {"department": department, "limitCount":count}
-  logger.debug(f"fechData: hospital_evaluation")
-  
+  param = {"limitCount": count}
+
+  dept_list = department if isinstance(department, list) else [department]
+
+  dept_clauses = []
+  if dept_list:
+      for i, d_name in enumerate(dept_list):
+          key = f"dept_{i}"
+          dept_clauses.append(f"matched_dept LIKE :{key}")
+          param[key] = f"%{d_name}%"
+      dept_where_clause = " OR ".join(dept_clauses)
+  else:
+      # 진료과 리스트가 비어있을 경우, 쿼리가 실패하지 않도록 항상 false인 조건을 추가
+      dept_where_clause = "1=0"
+
+  query = base_query.format(dept_where_clause=dept_where_clause)
+
+  logger.debug(f"Executing findHospitals query: {query} with params: {param}")
   result = fetchData(query, param)["data"]
   return result
 
-def getRecommandHospitals(department: str,count: int):
-
-  # 2차: 문자열 매칭해서 복수의 표준진료분야 제시해 유저가 선택
-  result = findHospitals(department,count)
+def getRecommandHospitals(department: Union[str, List[str]], count: int, latitude: float = None, longitude: float = None, is_nearby: bool = False):
+  result = findHospitals(department, count)
 
   hospitals = []
   if len(result) > 0: 
+    logger.info(f"NOHLOGGER_BEFORE_RENAME: First row: {result[0] if result else 'EMPTY'}")
+    for hospital_data in result:
+        if 'hospital_short_name' in hospital_data:
+            hospital_data['name'] = hospital_data.pop('hospital_short_name')
     hospitals = result
-  # else:
-  #   # 3차: 문자열 매칭해서 복수의 표준진료분야 제시해 유저가 선택
-  #   param = {"department": department}
-  #   query = "select matched_dept from hospital_evaluation"
-  #   result2 = fetchData(query, param)["data"]
-  #   similarity_dept = None
-  #   max_val = -1
-  #   for hospital in result2:
-  #     matched_dept = hospital[0]
-  #     if matched_dept:
-  #         val = calculate_similarity(department, matched_dept)
-  #         if val > max_val:
-  #             similarity_dept = matched_dept
-  #             max_val = val
-  #             logger.debug(f"similarity_dept:{similarity_dept}")    
+    logger.info(f"NOHLOGGER_AFTER_RENAME: First row: {hospitals[0] if hospitals else 'EMPTY'}")
 
-  #   if similarity_dept:
-  #     hospitals = findHospitals(similarity_dept)
+    # is_nearby 플래그가 True이고 좌표가 있을 때만 거리순으로 정렬
+    if is_nearby and latitude is not None and longitude is not None:
+        logger.info("is_nearby is True, sorting by distance.")
+        for hospital in hospitals:
+            hospital_lat = hospital.get('lat')
+            hospital_lon = hospital.get('lon')
+            if hospital_lat is not None and hospital_lon is not None:
+                distance = haversine_distance(latitude, longitude, hospital_lat, hospital_lon)
+                hospital['distance'] = distance
+            else:
+                hospital['distance'] = float('inf')
+        
+        hospitals.sort(key=lambda x: x.get('distance', float('inf')))
+    else:
+        logger.info("is_nearby is False or coordinates are missing, maintaining evaluation-based order.")
 
   return hospitals

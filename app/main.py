@@ -6,7 +6,6 @@ from .agent import get_compiled_graph
 # Initialize logger
 logger = setup_logger()
 
-
 app = FastAPI(title="FastAPI LangChain API")
 app.include_router(chat_router)
 

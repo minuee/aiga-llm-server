@@ -1,204 +1,262 @@
+from ..config import settings
+from ..common.utils import _get_final_limit
 from .db import fetchData
 from ..common.logger import logger
 
-def buildDoctorQuery(name: str, hospital: str, deptname: str) -> tuple:
-    """의사 정보를 가져오기 위한 쿼리와 파라미터를 생성하는 함수"""
-    
-    if hospital:
-        query = "SELECT * FROM hospital where baseName = :hospital or shortName = :hospital"
-        param = {"hospital": hospital}
-
-        logger.debug(f"fechData: hospital")
-        result = fetchData(query, param)
-        hid = result["data"][0]['hid']
-        
-        logger.debug(f"result, hid:{hid}")
-
-        if deptname:
-            query = """
-            SELECT 
-                s.shortName, s.address, s.lat, s.lon, s.telephone, a.doctor_id, a.doctorname, a.deptname, 
-                a.specialties, a.doctor_url, a.profileimgurl,
-                b.education, b.career, b.jsondata, a.rid,a.hexrid,
-                IFNULL(e.paper_score, 0) as paper_score, 
-                IFNULL(e.patient_score, 0) as patient_score, 
-                IFNULL(e.public_score, 0) as public_score, 
-                IFNULL(e.peer_score, 0) as peer_score,
-                IFNULL(e.kindness, 0) as kindness, 
-                IFNULL(e.satisfaction, 0) as satisfaction,
-                IFNULL(e.explanation, 0) as explanation, 
-                IFNULL(e.recommendation, 0) as recommendation
-            FROM 
-                ( 
-                    SELECT
-                        HEX(rid) AS hexrid,rid,doctor_id,hid,doctorname,deptname,specialties,doctor_url,profileimgurl
-                    FROM 
-                        doctor_basic
-                    WHERE 
-                        doctor_id is not null and hid = :hid and deptname = :deptname and doctorname = :name 
-                        AND is_active not in ( 0,'0' )
-                ) a
-                LEFT JOIN doctor_career b ON a.rid = b.rid 
-                LEFT JOIN (
-                    select 
-                        doctor_id, avg(paper_score) as paper_score, avg(patient_score) as patient_score, avg(public_score) as public_score, avg(peer_score) as peer_score,
-                        avg(kindness) as kindness, avg(satisfaction) as satisfaction, avg(explanation) as explanation, avg(recommendation) as recommendation
-                    FROM 
-                        doctor_evaluation 
-                    GROUP BY doctor_id
-                ) e ON a.doctor_id = e.doctor_id
-                LEFT JOIN hospital s ON a.hid = s.hid"""
-            param = {"hid": hid, "deptname": deptname, "name": name}
-        else:
-            query = """
-            SELECT 
-                s.shortName, s.address, s.lat, s.lon, s.telephone, a.doctor_id, a.doctorname, a.deptname, 
-                a.specialties, a.doctor_url, a.profileimgurl,
-                b.education, b.career, b.jsondata, a.rid,a.hexrid,
-                IFNULL(e.paper_score, 0) as paper_score, 
-                IFNULL(e.patient_score, 0) as patient_score, 
-                IFNULL(e.public_score, 0) as public_score, 
-                IFNULL(e.peer_score, 0) as peer_score,
-                IFNULL(e.kindness, 0) as kindness, 
-                IFNULL(e.satisfaction, 0) as satisfaction,
-                IFNULL(e.explanation, 0) as explanation, 
-                IFNULL(e.recommendation, 0) as recommendation
-            FROM 
-                ( 
-                    SELECT
-                        HEX(rid) AS hexrid,rid,doctor_id,hid,doctorname,deptname,specialties,doctor_url,profileimgurl 
-                    FROM 
-                        doctor_basic 
-                    WHERE 
-                        doctor_id is not null and hid = :hid and doctorname = :name 
-                        AND is_active not in ( 0,'0' )
-                ) a
-                LEFT JOIN doctor_career b ON a.rid = b.rid 
-                LEFT JOIN (
-                    SELECT 
-                        doctor_id, avg(paper_score) as paper_score, avg(patient_score) as patient_score, avg(public_score) as public_score, avg(peer_score) as peer_score,avg(kindness) as kindness, avg(satisfaction) as satisfaction, avg(explanation) as explanation, avg(recommendation) as recommendation
-                    FROM 
-                        doctor_evaluation 
-                    GROUP BY doctor_id
-                ) e on a.doctor_id = e.doctor_id
-                LEFT JOIN hospital s ON a.hid = s.hid"""
-            param = {"hid": hid, "name": name}
-       
-    else:
-        query = """
-        SELECT 
-            s.shortName, s.address, s.lat, s.lon, s.telephone, a.doctor_id, a.doctorname, a.deptname,
-            a.specialties, a.doctor_url, a.profileimgurl,
-            b.education, b.career, b.jsondata, a.rid,a.hexrid,
-            IFNULL(e.paper_score, 0) as paper_score, 
-            IFNULL(e.patient_score, 0) as patient_score, 
-            IFNULL(e.public_score, 0) as public_score, 
+def getSearchDoctors(name: str, hospital: str = "", deptname: str = "") -> list:
+    """
+    의사 이름, 병원, 진료과를 기반으로 의사 정보를 검색하는 통합 함수 (개선안).
+    N+1 쿼리 문제와 비효율적인 서브쿼리 구조를 해결.
+    """
+    ### logger.info(f"tool:getSearchDoctors 시작 , name:{name}, hospital:{hospital}, deptname:{deptname}")
+    base_query = """
+        SELECT
+            s.shortname, s.address, s.lat, s.lon, s.telephone,s.hospital_site, s.hid,  b.doctor_id, b.doctorname, b.deptname,
+            b.specialties, b.doctor_url, b.profileimgurl,
+            d.education, d.career,
+            b.rid, HEX(b.rid) as hexrid,
+            0 as paper_score,
+            IFNULL(e.patient_score, 0) as patient_score,
+            IFNULL(e.public_score, 0) as public_score,
             IFNULL(e.peer_score, 0) as peer_score,
-            IFNULL(e.kindness, 0) as kindness, 
+            IFNULL(e.kindness, 0) as kindness,
             IFNULL(e.satisfaction, 0) as satisfaction,
-            IFNULL(e.explanation, 0) as explanation, 
+            IFNULL(e.explanation, 0) as explanation,
             IFNULL(e.recommendation, 0) as recommendation
-        FROM 
-            ( 
-                SELECT
-                    HEX(rid) AS hexrid,rid,doctor_id,hid,doctorname,deptname,specialties,doctor_url,profileimgurl
-                FROM 
-                    doctor_basic
-                WHERE
-                    doctor_id is not null and doctorname = :name 
-                    AND is_active not in ( 0,'0' )
-            ) a
-            LEFT JOIN doctor_career b ON a.rid = b.rid 
-            LEFT JOIN (
-                SELECT 
-                    doctor_id, avg(paper_score) as paper_score, avg(patient_score) as patient_score, avg(public_score) as public_score, avg(peer_score) as peer_score,avg(kindness) as kindness, avg(satisfaction) as satisfaction, avg(explanation) as explanation, avg(recommendation) as recommendation
-                FROM 
-                    doctor_evaluation 
+        FROM
+            doctor_basic b JOIN hospital s ON b.hid = s.hid
+            LEFT JOIN doctor_career d ON b.rid = d.rid
+            LEFT JOIN
+                (SELECT
+                    doctor_id,
+                    0 as paper_score, avg(patient_score) as patient_score,
+                    avg(public_score) as public_score, avg(peer_score) as peer_score,
+                    avg(kindness) as kindness, avg(satisfaction) as satisfaction,
+                    avg(explanation) as explanation, avg(recommendation) as recommendation
+                FROM
+                    doctor_evaluation
                 GROUP BY doctor_id
-            ) e ON a.doctor_id = e.doctor_id
-            LEFT JOIN hospital s ON a.hid = s.hid"""     
-        param = {"name": name}
+                ) e ON b.doctor_id = e.doctor_id
+        WHERE
+            b.doctorname LIKE :name
+            AND b.is_active in ('1','2')
+    """
+    param = {"name": f"%{name}%"}
 
-    logger.debug(f"fechData: doctor_career")
-    return query, param
+    # 병원 조건 동적 추가
+    if hospital:
+        base_query += " AND s.shortName = :hospital"
+        param["hospital"] = hospital
 
-def getSearchDoctors(name: str, hospital: str = "", deptname: str = "") -> dict:
-    """의사 상세 정보를 가져오는 함수"""
+    # 진료과 조건 동적 추가
+    if deptname:
+        base_query += " AND b.deptname LIKE :deptname"
+        param["deptname"] = f"%{deptname}%"
 
-    query, param = buildDoctorQuery(name, hospital, deptname)
+    logger.debug(f"Executing getSearchDoctors query with params: {param}")
+    result = fetchData(base_query, param)
+    return result.get("data", [])
 
-    result = fetchData(query, param)["data"]
-    return result
+from typing import Union, List, Optional
 
-def getSearchDoctorsByHospitalAndDept(hospital: str, deptname: str) -> dict:
-    """병원과 진료과로 의사를 검색하는 함수"""
-    
-    # 병원 ID 가져오기
-    query = "SELECT * FROM hospital WHERE baseName = :hospital or shortName = :hospital"
+def getSearchDoctorsByHospitalAndDept(hospital: str, deptname: Union[str, List[str]]) -> list:
+    """병원과 하나 또는 여러 진료과로 의사를 검색하는 함수"""
+
+    # 쿼리 템플릿의 WHERE 절을 format을 사용해 동적으로 구성할 수 있도록 변경
+    base_query = """
+        SELECT
+            s.shortname, s.address, s.lat, s.lon, s.telephone,s.hospital_site, s.hid,  b.doctor_id, b.doctorname, b.deptname,
+            b.specialties, b.doctor_url, b.profileimgurl,
+            d.education, d.career,
+            b.rid, HEX(b.rid) as hexrid,
+            0 as paper_score,
+            IFNULL(e.patient_score, 0) as patient_score,
+            IFNULL(e.public_score, 0) as public_score,
+            IFNULL(e.peer_score, 0) as peer_score,
+            IFNULL(e.kindness, 0) as kindness,
+            IFNULL(e.satisfaction, 0) as satisfaction,
+            IFNULL(e.explanation, 0) as explanation,
+            IFNULL(e.recommendation, 0) as recommendation
+        FROM
+            doctor_basic b
+        JOIN
+            hospital s ON b.hid = s.hid
+        LEFT JOIN
+            doctor_career d ON b.rid = d.rid
+        LEFT JOIN
+            (SELECT
+                doctor_id,
+                0 as paper_score, avg(patient_score) as patient_score,
+                avg(public_score) as public_score, avg(peer_score) as peer_score,
+                avg(kindness) as kindness, avg(satisfaction) as satisfaction,
+                avg(explanation) as explanation, avg(recommendation) as recommendation
+             FROM
+                doctor_evaluation
+             GROUP BY doctor_id
+            ) e ON b.doctor_id = e.doctor_id
+        WHERE
+            s.shortName = :hospital
+            {dept_condition}
+            AND b.is_active in ('1','2')
+        ORDER BY
+            e.patient_score DESC
+    """
     param = {"hospital": hospital}
+
+    dept_list = deptname if isinstance(deptname, list) else [deptname]
     
-    logger.debug(f"fechData: hospital")
+    # 여러 진료과에 대한 'b.deptname LIKE :key' 구문을 'OR'로 연결
+    dept_clauses = []
+    for i, d_name in enumerate(dept_list):
+        key = f"dept_{i}"
+        dept_clauses.append(f"b.deptname LIKE :{key}")
+        param[key] = f"%{d_name}%"
+    
+    dept_where_clause = " OR ".join(dept_clauses)
+    dept_condition = f"AND ({dept_where_clause})" if dept_where_clause else ""
+
+    query = base_query.format(dept_condition=dept_condition)
+
+    logger.debug(f"Executing getSearchDoctorsByHospitalAndDept query: {query} with params: {param}")
+    result = fetchData(query, param)
+    return result.get("data", [])
+
+def getDoctorById(doctor_id: int) -> list:
+    """의사 ID로 상세 정보를 가져오는 함수 (개선안)"""
+
+    query = """
+        SELECT
+            b.doctorname, b.deptname, s.shortName as hospital_name
+        FROM
+            doctor_basic b
+        JOIN
+            hospital s on b.hid = s.hid
+        WHERE
+            b.doctor_id = :doctor_id
+            AND b.is_active in ('1','2')
+        LIMIT 1
+    """
+    param = {"doctor_id": doctor_id}
+    
+    logger.debug(f"Fetching doctor info for getDoctorById with doctor_id: {doctor_id}")
     result = fetchData(query, param)
     
-    if not result["data"]:
+    if not result.get("data"):
         return []
-    
-    hid = result["data"][0]['hid']
-    
-    # 해당 병원의 해당 진료과 의사들 가져오기
+
+    doctor_info = result["data"][0]
+    name = doctor_info['doctorname']
+    hospital = doctor_info['hospital_name']
+    deptname = doctor_info['deptname']
+
+    # 통합된 getSearchDoctors 함수를 호출하여 전체 정보 조회
+    return getSearchDoctors(name, hospital, deptname)
+
+def getSearchDoctorsByOnlyHospital(hospital: str) -> list:
+    """병원으로 의사를 검색하는 함수 (개선안)"""
+
     query = """
-        SELECT 
-            s.shortName, s.address, s.lat, s.lon, s.telephone, a.doctor_id, a.doctorname, a.deptname, 
-            a.specialties, a.doctor_url, a.profileimgurl,
-            b.education, b.career, b.jsondata, a.rid,
-            IFNULL(e.paper_score, 0) as paper_score, 
-            IFNULL(e.patient_score, 0) as patient_score, 
-            IFNULL(e.public_score, 0) as public_score, 
+        SELECT
+            s.shortname, s.address, s.lat, s.lon, s.telephone,s.hospital_site, s.hid, b.doctor_id, b.doctorname, b.deptname,
+            b.specialties, b.doctor_url, b.profileimgurl,
+            d.education, d.career,
+            b.rid, HEX(b.rid) as hexrid,
+            0 as paper_score,
+            IFNULL(e.patient_score, 0) as patient_score,
+            IFNULL(e.public_score, 0) as public_score,
             IFNULL(e.peer_score, 0) as peer_score,
-            IFNULL(e.kindness, 0) as kindness, 
+            IFNULL(e.kindness, 0) as kindness,
             IFNULL(e.satisfaction, 0) as satisfaction,
-            IFNULL(e.explanation, 0) as explanation, 
+            IFNULL(e.explanation, 0) as explanation,
             IFNULL(e.recommendation, 0) as recommendation
-        FROM 
-            ( SELECT * FROM doctor_basic WHERE doctor_id is not null and hid = :hid and deptname = :deptname AND is_active not in ( 0,'0' ) ) a
-            LEFT JOIN doctor_career b ON a.rid = b.rid 
-            LEFT JOIN (
-                SELECT 
-                    doctor_id, avg(paper_score) as paper_score, avg(patient_score) as patient_score, avg(public_score) as public_score, avg(peer_score) as peer_score,
-                    avg(kindness) as kindness, avg(satisfaction) as satisfaction, avg(explanation) as explanation, avg(recommendation) as recommendation
-                FROM 
-                    doctor_evaluation 
+        FROM
+            doctor_basic b
+        JOIN
+            hospital s ON b.hid = s.hid
+        LEFT JOIN
+            doctor_career d ON b.rid = d.rid
+        LEFT JOIN
+            (SELECT
+                doctor_id,
+                0 as paper_score, avg(patient_score) as patient_score,
+                avg(public_score) as public_score, avg(peer_score) as peer_score,
+                avg(kindness) as kindness, avg(satisfaction) as satisfaction,
+                avg(explanation) as explanation, avg(recommendation) as recommendation
+             FROM
+                doctor_evaluation
+             GROUP BY doctor_id
+            ) e ON b.doctor_id = e.doctor_id
+        WHERE
+            s.shortName = :hospital
+            AND b.is_active in ('1','2')
+        ORDER BY
+            e.patient_score DESC
+    """
+    param = {"hospital": hospital}
+
+    logger.debug(f"Executing getSearchDoctorsByOnlyHospital query with params: {param}")
+    result = fetchData(query, param)
+    return result.get("data", [])
+    
+
+
+def getSearchDoctorsByOnlyDepartment(department: Union[str, List[str]], limit: Optional[int] = None) -> list:
+    """진료과목으로만 의사를 검색하는 함수 (개선안)"""
+
+    base_query = """
+        SELECT
+            s.shortname, s.address, s.lat, s.lon, s.telephone,s.hospital_site, s.hid, b.doctor_id, b.doctorname, b.deptname,
+            b.specialties, b.doctor_url, b.profileimgurl,
+            d.education, d.career,
+            b.rid, HEX(b.rid) as hexrid,
+            0 as paper_score,
+            IFNULL(e.patient_score, 0) as patient_score,
+            IFNULL(e.public_score, 0) as public_score,
+            IFNULL(e.peer_score, 0) as peer_score,
+            IFNULL(e.kindness, 0) as kindness,
+            IFNULL(e.satisfaction, 0) as satisfaction,
+            IFNULL(e.explanation, 0) as explanation,
+            IFNULL(e.recommendation, 0) as recommendation
+        FROM
+            doctor_basic b
+            JOIN hospital s ON b.hid = s.hid
+            LEFT JOIN doctor_career d ON b.rid = d.rid
+            LEFT JOIN
+            (
+                SELECT
+                    doctor_id,
+                    0 as paper_score, avg(patient_score) as patient_score,
+                    avg(public_score) as public_score, avg(peer_score) as peer_score,
+                    avg(kindness) as kindness, avg(satisfaction) as satisfaction,
+                    avg(explanation) as explanation, avg(recommendation) as recommendation
+                FROM
+                    doctor_evaluation
                 GROUP BY doctor_id
-            ) e ON a.doctor_id = e.doctor_id
-            LEFT JOIN hospital s ON a.hid = s.hid
-        ORDER BY e.paper_score desc, e.patient_score desc"""
+            ) e ON b.doctor_id = e.doctor_id
+        WHERE
+            b.is_active in ('1','2')
+            {dept_condition}
+        ORDER BY
+            e.patient_score DESC
+        LIMIT {limit}
+    """
+    param = {}
+
+    dept_list = department if isinstance(department, list) else [department]
     
-    param = {"hid": hid, "deptname": deptname}
+    dept_clauses = []
+    for i, d_name in enumerate(dept_list):
+        key = f"dept_{i}"
+        dept_clauses.append(f"b.deptname LIKE :{key}")
+        param[key] = f"%{d_name}%"
     
-    logger.debug(f"fechData: doctors by hospital and dept")
-    result = fetchData(query, param)["data"]
-    return result
+    dept_where_clause = " OR ".join(dept_clauses)
+    dept_condition = f"AND ({dept_where_clause})" if dept_where_clause else ""
 
-def getDoctorById(doctor_id: int) -> dict:
-    """의사 상세 정보를 가져오는 함수"""
+    final_limit = _get_final_limit(limit)
 
-    query = """
-        SELECT 
-            b.doctorname, b.deptname, c.shortname 
-        FROM doctor a
-            LEFT JOIN doctor_basic b on a.doctor_id = b.doctor_id
-            LEFT JOIN hospital c on b.hid = c.hid
-        WHERE 
-            a.doctor_id = :doctor_id"""
-
-    param = {"doctor_id": doctor_id}
-    result = fetchData(query, param)["data"]
-
-    name = result[0]['doctorname']
-    hospital = result[0]['shortname']
-    deptname = result[0]['deptname']
-
-    query, param = buildDoctorQuery(name, hospital, deptname)
-
-    result = fetchData(query, param)["data"]
-    return result    
+    query = base_query.format(dept_condition=dept_condition, limit=final_limit)
+    
+    logger.debug(f"Executing getSearchDoctorsByOnlyDepartment query with params: {param}")
+    result = fetchData(query, param)
+    return result.get("data", [])

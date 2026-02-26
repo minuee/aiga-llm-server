@@ -38,3 +38,15 @@ LANGUAGE_SET = {
     "ro" : "루마니아어",
     "hu" : "헝가리어"
 }
+
+from app.config import settings
+
+LANGUAGE_GREETINGS = {
+    "ko": f"안녕하세요! {settings.project_title}입니다.",
+    "en": f"Hello! This is {settings.project_title}.",
+    "ja": f"ようこそ {settings.project_title}でございます。",
+    "zh": f"你好！这里是 {settings.project_title}。"
+    # 다른 언어 추가 가능
+}
+
+DEFAULT_GREETING = LANGUAGE_GREETINGS["ko"]

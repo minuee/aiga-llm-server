@@ -3,7 +3,7 @@ from app.common.common import calculate_similarity
 from ..common.logger import logger
 import os
 
-def getStandardSpecialyByDB(disease: str):
+def getStandardSpecialty(disease: str):
     """표준 진료 분야를 구하는 함수"""
     
     # 2차: 문자열 매칭해서 복수의 표준진료분야 제시해 유저가 선택

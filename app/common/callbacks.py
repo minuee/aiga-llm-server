@@ -14,13 +14,18 @@ class TokenCountingCallback(BaseCallbackHandler):
 
     def on_llm_end(self, response: LLMResult, **kwargs: Any) -> None:
         """LLM 호출이 끝날 때마다 자동으로 실행되어 토큰을 누적합니다."""
-        logger.info(f"on_llm_end triggered. Response:")
-        
-        token_usage = response.llm_output.get("token_usage", {})
-        if token_usage:
-            logger.info(f"Token usage found in on_llm_end:")
-            self.total_prompt_tokens += token_usage.get("prompt_tokens", 0)
-            self.total_completion_tokens += token_usage.get("completion_tokens", 0)
-            self.total_tokens += token_usage.get("total_tokens", 0)
+        logger.info("on_llm_end triggered.")
+
+        # response.llm_output이 None이 아닌지 먼저 확인
+        if response.llm_output is not None:
+            token_usage = response.llm_output.get("token_usage", {})
+            if token_usage:
+                logger.info("Token usage found in on_llm_end.")
+                self.total_prompt_tokens += token_usage.get("prompt_tokens", 0)
+                self.total_completion_tokens += token_usage.get("completion_tokens", 0)
+                self.total_tokens += token_usage.get("total_tokens", 0)
+            else:
+                logger.warning("No 'token_usage' key found in response.llm_output.")
         else:
-            logger.warning("No token_usage found in on_llm_end response.llm_output.")
+            # llm_output이 None인 결정적인 경우를 로깅
+            logger.warning("response.llm_output is None in on_llm_end. This may indicate an API error or content filtering.")
