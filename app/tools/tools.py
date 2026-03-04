@@ -143,6 +143,7 @@ def formattingDoctorInfo(doctors, isEntire=False):
             "name": doctor.get('doctorname', ''),
             "deptname": doctor.get('deptname', ''),
             "specialties": doctor.get('specialties', ''),
+            "parse_specialties": doctor.get('parse_specialties', ''),
             "url": doctor.get('doctor_url', ''),
             "education": doctor.get('education', ''),
             "career": doctor.get('career', ''),

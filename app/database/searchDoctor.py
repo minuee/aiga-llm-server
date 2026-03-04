@@ -12,7 +12,7 @@ def getSearchDoctors(name: str, hospital: str = "", deptname: str = "") -> list:
     base_query = """
         SELECT
             s.shortname, s.address, s.lat, s.lon, s.telephone,s.hospital_site, s.hid,  b.doctor_id, b.doctorname, b.deptname,
-            b.specialties, b.doctor_url, b.profileimgurl,
+            b.specialties, b.parse_specialties, b.doctor_url, b.profileimgurl,
             d.education, d.career,
             b.rid, HEX(b.rid) as hexrid,
             0 as paper_score,
@@ -66,7 +66,7 @@ def getSearchDoctorsByHospitalAndDept(hospital: str, deptname: Union[str, List[s
     base_query = """
         SELECT
             s.shortname, s.address, s.lat, s.lon, s.telephone,s.hospital_site, s.hid,  b.doctor_id, b.doctorname, b.deptname,
-            b.specialties, b.doctor_url, b.profileimgurl,
+            b.specialties, b.parse_specialties, b.doctor_url, b.profileimgurl,
             d.education, d.career,
             b.rid, HEX(b.rid) as hexrid,
             0 as paper_score,
@@ -158,7 +158,7 @@ def getSearchDoctorsByOnlyHospital(hospital: str) -> list:
     query = """
         SELECT
             s.shortname, s.address, s.lat, s.lon, s.telephone,s.hospital_site, s.hid, b.doctor_id, b.doctorname, b.deptname,
-            b.specialties, b.doctor_url, b.profileimgurl,
+            b.specialties, b.parse_specialties, b.doctor_url, b.profileimgurl,
             d.education, d.career,
             b.rid, HEX(b.rid) as hexrid,
             0 as paper_score,
@@ -206,7 +206,7 @@ def getSearchDoctorsByOnlyDepartment(department: Union[str, List[str]], limit: O
     base_query = """
         SELECT
             s.shortname, s.address, s.lat, s.lon, s.telephone,s.hospital_site, s.hid, b.doctor_id, b.doctorname, b.deptname,
-            b.specialties, b.doctor_url, b.profileimgurl,
+            b.specialties, b.parse_specialties, b.doctor_url, b.profileimgurl,
             d.education, d.career,
             b.rid, HEX(b.rid) as hexrid,
             0 as paper_score,

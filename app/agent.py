@@ -237,9 +237,9 @@ Inherited entities:
     clean_system_prompt_base = re.sub(r'\[지역 사전 분석 플래그\].*?---', '', clean_system_prompt_base, flags=re.DOTALL)
     clean_system_prompt_base = re.sub(r'\[Location Context\].*?\}', '', clean_system_prompt_base, flags=re.DOTALL)
 
-    # 3. 최종 시스템 프롬프트 구성
-    final_system_prompt_content = clean_system_prompt_base + persistent_facts_info + location_gps_info + language_rule
-    
+    # 3. 최종 시스템 프롬프트 구성 2026.03.04일에 직전정보 제거 중복판단 
+    # final_system_prompt_content = clean_system_prompt_base + persistent_facts_info + location_gps_info + language_rule
+    final_system_prompt_content = clean_system_prompt_base + location_gps_info + language_rule
     # 4. messages 리스트에서 기존 SystemMessage를 모두 제거
     messages[:] = [msg for msg in messages if not isinstance(msg, SystemMessage)]
     
@@ -364,7 +364,8 @@ Inherited entities:
                                             "name": name,
                                             "hospital": d.get("hospital") or d.get("shortname") or d.get("hospital_name"),
                                             "deptname": d.get("deptname"),
-                                            "specialties": d.get("specialties")
+                                            "specialties": d.get("specialties"),
+                                            "parse_specialties": d.get("parse_specialties")
                                         })
                                 
                                 hospitals = [h.get("shortname") or h.get("name") for h in answer.get("hospitals", []) if h.get("shortname") or h.get("name")]
@@ -386,8 +387,8 @@ Inherited entities:
                                     "content_summary": content_data.get("summary"),
                                     "data": refined_context
                                 }, ensure_ascii=False)
-                                logger.info(f"✅ [# {idx}] 과거 컨텍스트 복원 완료: {chat_type} (의사 {len(doctors)}명)")
-                                logger.info(f"   ㄴ [엔티티]: {refined_context['entities_found_in_this_step']}")
+                                # logger.info(f"✅ [# {idx}] 과거 컨텍스트 복원 완료: {chat_type} (의사 {len(doctors)}명)")
+                                # logger.info(f"   ㄴ [엔티티]: {refined_context['entities_found_in_this_step']}")
                             else:
                                 logger.info(f"ℹ️ [# {idx}] 복원 스킵: 데이터 구조 불일치 ({chat_type})")
                 except Exception as e:
@@ -626,11 +627,13 @@ async def custom_tool_node(state: AgentState):
         llm_proposal = tool_args.get('proposal')
         llm_request_recommend = tool_args.get('is_request_recommend')
         llm_request_distance = tool_args.get('llm_request_distance')
-        logger.info(f"ll, select legacy_list : '{llm_legacy_list}'")
-        logger.info(f"ll, select is_request_recommend : '{llm_request_recommend}'")
-        logger.info(f"ll, select proposal : '{llm_proposal}'")
-        logger.info(f"llm select llm_request_distance : '{llm_request_distance}'")
-        logger.info(f"llm select tool_name : '{tool_name}'")
+        llm_limit = tool_args.get('limit')
+        logger.info(f"llm_select legacy_list : '{llm_legacy_list}'")
+        logger.info(f"llm_select is_request_recommend : '{llm_request_recommend}'")
+        logger.info(f"lllm_select proposal : '{llm_proposal}'")
+        logger.info(f"llm llm_select llm_request_distance : '{llm_request_distance}'")
+        logger.info(f"llm llm_select tool_name : '{tool_name}'")
+        logger.info(f"llm_select llm_limit : '{llm_limit}'")
         # --- [PROXIMITY_INJECTION] ---
         # is_location_near 파라미터를 받는 툴이라면, is_proximity_query 값을 주입
         if tool_name in [

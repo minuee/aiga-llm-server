@@ -582,7 +582,7 @@ async def search_doctor_details_by_name(name: Union[str, List[str]], hospital: O
     template_query = f"""
         SELECT
             d.doctor_id, HEX(d.rid) as hexrid, h.shortname, h.address, h.lat, h.lon, h.telephone, h.hospital_site, h.hid as hospital_hid,
-            db.doctorname, db.deptname, db.specialties, db.doctor_url,
+            db.doctorname, db.deptname, db.specialties, db.parse_specialties, db.doctor_url,
             dc.education, dc.career, db.profileimgurl,
             de.paper_score, de.patient_score, de.public_score,
             de.kindness, de.satisfaction, de.explanation, de.recommendation
@@ -623,7 +623,7 @@ async def search_doctor_details_by_name(name: Union[str, List[str]], hospital: O
                     doctor = {
                         "doctor_id": row.doctor_id, "doctor_rid": row.hexrid, "hospital": row.shortname, "address": row.address,
                         "lat": row.lat, "lon": row.lon, "telephone": row.telephone, "hospital_site": row.hospital_site, "hospital_hid" : row.hospital_hid,
-                        "name": row.doctorname,"deptname": row.deptname, "specialties": row.specialties, "url": row.doctor_url,
+                        "name": row.doctorname,"deptname": row.deptname, "specialties": row.specialties, "parse_specialties": row.parse_specialties, "url": row.doctor_url,
                         "education": row.education, "career": row.career, "photo": row.profileimgurl,
                         "doctor_score": {"paper_score": row.paper_score or 0.0, "patient_score": row.patient_score or 0.0, "public_score": row.public_score or 0.0, "peer_score": 0.0},
                         "ai_score": {"kindness": (row.kindness or 0.0) * 5.0, "satisfaction": (row.satisfaction or 0.0) * 5.0, "explanation": (row.explanation or 0.0) * 5.0, "recommendation": (row.recommendation or 0.0) * 5.0},
@@ -789,7 +789,7 @@ async def search_doctors_by_location_and_department(department: Union[str, List[
         query = f"""
             SELECT
                 d.doctor_id, h.shortname, h.address, h.lat, h.lon, h.telephone, h.hospital_site, h.hid as hospital_hid,
-                db.doctorname, db.deptname, db.specialties, db.doctor_url,
+                db.doctorname, db.deptname, db.specialties, db.parse_specialties, db.doctor_url,
                 dc.education, dc.career, db.profileimgurl,
                 de.paper_score, de.patient_score, de.public_score, de.kindness,
                 de.satisfaction, de.explanation, de.recommendation
@@ -833,7 +833,7 @@ async def search_doctors_by_location_and_department(department: Union[str, List[
                     doctor = {
                         "doctor_id": row.doctor_id, "hospital": row.shortname, "address": row.address,
                         "lat": row.lat, "lon": row.lon, "telephone": row.telephone, "hospital_site" : row.hospital_site, "hospital_hid" : row.hospital_hid,
-                        "name": row.doctorname, "deptname": row.deptname, "specialties": row.specialties,
+                        "name": row.doctorname, "deptname": row.deptname, "specialties": row.specialties,"parse_specialties": row.parse_specialties,
                         "url": row.doctor_url, "education": row.education, "career": row.career, "photo": row.profileimgurl,
                         "doctor_score": {"paper_score": row.paper_score or 0.0, "patient_score": row.patient_score or 0.0, "public_score": row.public_score or 0.0, "peer_score": 0.0},
                         "ai_score": {"kindness": (row.kindness or 0.0) * 5.0, "satisfaction": (row.satisfaction or 0.0) * 5.0, "explanation": (row.explanation or 0.0) * 5.0, "recommendation": (row.recommendation or 0.0) * 5.0},
@@ -919,7 +919,7 @@ async def search_doctors_by_disease_and_location(disease: Union[str, List[str]],
         query = f"""
             SELECT
                 d.doctor_id, h.shortname, h.address, h.lat, h.lon, h.telephone, h.hospital_site, h.hid as hospital_hid,
-                db.doctorname, db.deptname, db.specialties, db.doctor_url,
+                db.doctorname, db.deptname, db.specialties, db.parse_specialties, db.doctor_url,
                 dc.education, dc.career, db.profileimgurl,
                 de.paper_score, de.patient_score, de.public_score, de.kindness,
                 de.satisfaction, de.explanation, de.recommendation
@@ -963,7 +963,7 @@ async def search_doctors_by_disease_and_location(disease: Union[str, List[str]],
                     doctor = {
                         "doctor_id": row.doctor_id, "hospital": row.shortname, "address": row.address,
                         "lat": row.lat, "lon": row.lon, "telephone": row.telephone, "hospital_site" :  row.hospital_site, "hospital_hid" : row.hospital_hid,
-                        "name": row.doctorname, "deptname": row.deptname, "specialties": row.specialties,
+                        "name": row.doctorname, "deptname": row.deptname, "specialties": row.specialties, "parse_specialties": row.parse_specialties,
                         "url": row.doctor_url, "education": row.education, "career": row.career, "photo": row.profileimgurl,
                         "doctor_score": {"paper_score": row.paper_score or 0.0, "patient_score": row.patient_score or 0.0, "public_score": row.public_score or 0.0, "peer_score": 0.0},
                         "ai_score": {"kindness": (row.kindness or 0.0) * 5.0, "satisfaction": (row.satisfaction or 0.0) * 5.0, "explanation": (row.explanation or 0.0) * 5.0, "recommendation": (row.recommendation or 0.0) * 5.0},
@@ -1315,7 +1315,7 @@ async def search_doctors_by_hospital_name(hospital_name: Union[str, List[str]], 
     template_query = f"""
         SELECT
             d.doctor_id, HEX(d.rid) as hexrid, h.shortname, h.address, h.lat, h.lon, h.telephone,h.hospital_site,h.hid as hospital_hid,
-            db.doctorname, db.deptname, db.specialties, db.doctor_url,
+            db.doctorname, db.deptname, db.specialties, db.parse_specialties, db.doctor_url,
             dc.education, dc.career, db.profileimgurl,
             de.paper_score, de.patient_score, de.public_score,
             de.kindness, de.satisfaction, de.explanation, de.recommendation
@@ -1355,8 +1355,8 @@ async def search_doctors_by_hospital_name(hospital_name: Union[str, List[str]], 
                     doctor = {
                         "doctor_id": row.doctor_id, "doctor_rid": row.hexrid, "hospital": row.shortname, "address": row.address,
                         "lat": row.lat, "lon": row.lon, "telephone": row.telephone, "hospital_site" : row.hospital_site, "hospital_hid" : row.hospital_hid,
-                        "name": row.doctorname,"deptname": row.deptname, "specialties": row.specialties, "url": row.doctor_url,
-                        "education": row.education, "career": row.career, "photo": row.profileimgurl,
+                        "name": row.doctorname,"deptname": row.deptname, "specialties": row.specialties, "parse_specialties": row.parse_specialties, "url": row.doctor_url,
+                        "education": row.education, "career": row.career, "photo": row.profileimgurl,   
                         "doctor_score": {"paper_score": row.paper_score or 0.0, "patient_score": row.patient_score or 0.0, "public_score": row.public_score or 0.0, "peer_score": 0.0},
                         "ai_score": {"kindness": (row.kindness or 0.0) * 5.0, "satisfaction": (row.satisfaction or 0.0) * 5.0, "explanation": (row.explanation or 0.0) * 5.0, "recommendation": (row.recommendation or 0.0) * 5.0},
                         "paper": [], "review": []
@@ -1495,7 +1495,7 @@ async def search_by_location_only(location: str, target: str, is_location_near: 
         template_query = f"""
             SELECT
                 d.doctor_id, h.shortname, h.address, h.lat, h.lon, h.telephone, h.hospital_site, h.hid as hospital_hid,
-                db.doctorname, db.deptname, db.specialties, db.doctor_url,
+                db.doctorname, db.deptname, db.specialties, db.parse_specialties, db.doctor_url,
                 dc.education, dc.career, db.profileimgurl,
                 de.paper_score, de.patient_score, de.public_score, de.kindness,
                 de.satisfaction, de.explanation, de.recommendation
@@ -1529,7 +1529,7 @@ async def search_by_location_only(location: str, target: str, is_location_near: 
                     {
                         "doctor_id": row.doctor_id, "hospital": row.shortname, "address": row.address,
                         "lat": row.lat, "lon": row.lon, "telephone": row.telephone,"hospital_site":row.hospital_site,"hospital_hid":row.hospital_hid,
-                        "name": row.doctorname, "deptname": row.deptname, "specialties": row.specialties,
+                        "name": row.doctorname, "deptname": row.deptname, "specialties": row.specialties, "parse_specialties": row.parse_specialties,
                         "url": row.doctor_url, "education": row.education, "career": row.career, "photo": row.profileimgurl,
                         "doctor_score": {"paper_score": row.paper_score or 0.0, "patient_score": row.patient_score or 0.0, "public_score": row.public_score or 0.0, "peer_score": 0.0},
                         "ai_score": {"kindness": (row.kindness or 0.0) * 5.0, "satisfaction": (row.satisfaction or 0.0) * 5.0, "explanation": (row.explanation or 0.0) * 5.0, "recommendation": (row.recommendation or 0.0) * 5.0},
@@ -1580,6 +1580,7 @@ async def search_doctors_by_department_only(department: Union[str, List[str]], l
                     "name": row.get("doctorname"),
                     "deptname": row.get("deptname"),
                     "specialties": row.get("specialties"),
+                    "parse_specialties": row.get("parse_specialties"),
                     "url": row.get("doctor_url"),
                     "education": row.get("education"),
                     "career": row.get("career"),
@@ -1684,6 +1685,7 @@ async def search_doctors_by_disease_and_department(disease: Union[str, List[str]
                     "name": row.get("doctorname"),
                     "deptname": row.get("deptname"),
                     "specialties": row.get("specialties"),
+                    "parse_specialties": row.get("parse_specialties"),
                     "url": row.get("doctor_url"),
                     "education": row.get("education"),
                     "career": row.get("career"),

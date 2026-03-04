@@ -448,5 +448,5 @@ async def extract_entities_from_ai_response_and_update_history(
     ai_doctors_as_obj = [{"name": name, "hospital": None, "department": None} for name in extracted_from_ai_response.get("doctors", [])]
     _add_unique_doctors(current_entity_history["doctors"], ai_doctors_as_obj)
 
-    logger.info(f"Updated entity history after AI response: {current_entity_history}")
+    # logger.info(f"Updated entity history after AI response: {current_entity_history}")
     return current_entity_history

@@ -13,7 +13,7 @@ def getRecommandDoctors(standard_disease: list, disease: list, logical_operator:
         logical_operator (str): 'AND' 또는 'OR'. 기본값은 'OR'.
         evalType (EVAL_TYPE): 평가 타입.
     """
-    prefix_query = """SELECT s.shortname, s.address, s.lat, s.lon, s.telephone, s.hospital_site, s.hid, b.doctorname, b.deptname, b.specialties,
+    prefix_query = """SELECT s.shortname, s.address, s.lat, s.lon, s.telephone, s.hospital_site, s.hid, b.doctorname, b.deptname, b.specialties,b.parse_specialties,
     b.rid,HEX(b.rid) AS hexrid, b.doctor_id, b.doctor_url, b.profileimgurl, d.education, d.career,
     0 as paper_score,
     IFNULL(e.patient_score, 0) as patient_score,
@@ -88,11 +88,8 @@ def getRecommandDoctors(standard_disease: list, disease: list, logical_operator:
         ORDER BY total_score desc 
         LIMIT 15"""
     else:
-        # ... (생략된 기존 코드) ...
-        # (이 부분은 standard_disease가 있는 경우이므로 기존 로직 유지)
-        has_space_disease = False # standard_disease는 공백 처리가 필요 없음
+        # 표준 질환명이 있는 경우, 각 질환에 대한 플레이스홀더를 동적으로 생성
         in_clause_placeholders = ", ".join([f":disease_{i}" for i in range(len(search_diseases))])
-        # ... 기존 코드 계속 ...
         for i, d in enumerate(search_diseases):
             param[f"disease_{i}"] = d
         
@@ -119,7 +116,7 @@ def getRecommandDoctors(standard_disease: list, disease: list, logical_operator:
                 b.is_active IN ('1','2') AND b.doctorname IS NOT NULL
             GROUP BY 
                 b.doctor_id, s.shortname, s.address, s.lat, s.lon, s.telephone,s.hospital_site, s.hid,
-                b.doctorname, b.deptname, b.specialties, b.rid, b.doctor_url,
+                b.doctorname, b.deptname, b.specialties, b.parse_specialties, b.rid, b.doctor_url,
                 b.profileimgurl, d.education, d.career, e.patient_score, e.public_score,
                 e.peer_score, e.kindness, e.satisfaction, e.explanation, e.recommendation
             ORDER BY
@@ -145,6 +142,9 @@ def getRecommandDoctors(standard_disease: list, disease: list, logical_operator:
     logger.info(f"fetchData: Recommand Doctors with diseases: {search_diseases}, operator: {logical_operator} param : {param}")
     logger.info(f"getRecommandDoctors Query: {query}")
     result = fetchData(query, param)
+
+    if result.get('data'):
+        logger.info(f"getRecommandDoctors First Result: {result['data'][0]}")
     
     # 1차 검색 결과가 없고, 공백이 포함된 질환명이 있는 경우 2차 검색(Fallback) 수행
     if not result.get('data') and not standard_disease and has_space_disease:
@@ -207,7 +207,7 @@ def getRecommandDoctorWithDiseaseAndDepartment(standard_disease: list, disease: 
         evalType (EVAL_TYPE): 평가 타입.
         limit (int): 반환할 결과의 최대 수.
     """
-    prefix_query = """SELECT s.shortname, s.address, s.lat, s.lon, s.telephone, s.hospital_site,s.hid, b.doctorname, b.deptname, b.specialties,
+    prefix_query = """SELECT s.shortname, s.address, s.lat, s.lon, s.telephone, s.hospital_site,s.hid, b.doctorname, b.deptname, b.specialties,b.parse_specialties,
     b.rid,HEX(b.rid) AS hexrid, b.doctor_id, b.doctor_url, b.profileimgurl, d.education, d.career,
     0 as paper_score,
     IFNULL(e.patient_score, 0) as patient_score,
@@ -317,7 +317,7 @@ def getRecommandDoctorWithDiseaseAndDepartment(standard_disease: list, disease: 
                 AND b.deptname LIKE :department
             GROUP BY 
                 b.doctor_id, s.shortname, s.address, s.lat, s.lon, s.telephone,s.hospital_site, s.hid,
-                b.doctorname, b.deptname, b.specialties, b.rid, b.doctor_url,
+                b.doctorname, b.deptname, b.specialties, b.parse_specialties, b.rid, b.doctor_url,
                 b.profileimgurl, d.education, d.career, e.patient_score, e.public_score,
                 e.peer_score, e.kindness, e.satisfaction, e.explanation, e.recommendation
             ORDER BY
@@ -344,6 +344,9 @@ def getRecommandDoctorWithDiseaseAndDepartment(standard_disease: list, disease: 
     logger.info(f"fetchData: Recommand Doctors with diseases: {search_diseases}, department: {department}, operator: {logical_operator} param : {param}")
     logger.info(f"getRecommandDoctorWithDiseaseAndDepartment Query: {query}")
     result = fetchData(query, param)
+
+    if result.get('data'):
+        logger.info(f"getRecommandDoctorWithDiseaseAndDepartment First Result: {result['data'][0]}")
     
     # 1차 검색 결과가 없고, 공백이 포함된 질환명이 있는 경우 2차 검색(Fallback) 수행
     if not result.get('data') and not standard_disease and has_space_disease:
