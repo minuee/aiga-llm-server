@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 from ..database.recommandDoctors import getRecommandDoctorWithDiseaseAndDepartment, getRecommandDoctors
-from .disease_utils import getStandardSpecialty
+from ..database.standardSpecialty import getStandardSpecialty
 import re
 import os
 import json
@@ -877,19 +877,8 @@ async def search_doctors_by_disease_and_location(disease: Union[str, List[str]],
 
     final_limit = _get_final_limit(limit)
 
-    # 1. 질환명 표준화 Hybrid 로직 적용
-    disease_list = disease if isinstance(disease, list) else [disease]
-    hybrid_disease_list = []
-    for d in disease_list:
-        if not d: continue
-        standards = await getStandardSpecialty(d)
-        if standards:
-            hybrid_disease_list.append(standards)
-        else:
-            hybrid_disease_list.append(d)
-
-    # 2. 1차 검색어 생성 (AND 방식) - Hybrid 리스트 사용
-    disease_search_term, has_space = _generate_boolean_term(hybrid_disease_list, 'AND')
+    # 1차 검색어 생성 (AND 방식)
+    disease_search_term, has_space = _generate_boolean_term(disease, 'AND')
 
     if not disease_search_term:
         return {"chat_type": "search_doctor", "answer": {"doctors": []}}
@@ -964,7 +953,7 @@ async def search_doctors_by_disease_and_location(disease: Union[str, List[str]],
         # 결과가 없고 공백이 포함된 경우 2단계: OR 검색 수행
         if not list_of_tuples and has_space:
             logger.info("No results with AND search. Attempting Fallback with OR search.")
-            disease_search_term_or, _ = _generate_boolean_term(hybrid_disease_list, 'OR')
+            disease_search_term_or, _ = _generate_boolean_term(disease, 'OR')
             list_of_tuples = await asyncio.to_thread(_perform_disease_doctor_search, disease_search_term_or)
         
         doctors = []
@@ -1016,19 +1005,8 @@ async def search_hospital_by_disease_and_location(disease: Union[str, List[str]]
 
     final_limit = _get_final_limit(limit)
 
-    # 1. 질환명 표준화 Hybrid 로직 적용
-    disease_list = disease if isinstance(disease, list) else [disease]
-    hybrid_disease_list = []
-    for d in disease_list:
-        if not d: continue
-        standards = await getStandardSpecialty(d)
-        if standards:
-            hybrid_disease_list.append(standards)
-        else:
-            hybrid_disease_list.append(d)
-
-    # 2. 1차 검색어 생성 (AND 방식) - Hybrid 리스트 사용
-    disease_search_term, has_space = _generate_boolean_term(hybrid_disease_list, 'AND')
+    # 1차 검색어 생성 (AND 방식)
+    disease_search_term, has_space = _generate_boolean_term(disease, 'AND')
 
     if not disease_search_term:
         return {"chat_type": "recommand_hospital", "answer": {"hospitals": []}}
@@ -1083,7 +1061,7 @@ async def search_hospital_by_disease_and_location(disease: Union[str, List[str]]
         # 결과가 없고 공백이 포함된 경우 2단계: OR 검색 수행
         if not list_of_tuples and has_space:
             logger.info("No results with AND search. Attempting Fallback with OR search.")
-            disease_search_term_or, _ = _generate_boolean_term(hybrid_disease_list, 'OR')
+            disease_search_term_or, _ = _generate_boolean_term(disease, 'OR')
             list_of_tuples = await asyncio.to_thread(_perform_disease_hospital_search, disease_search_term_or)
         
         hospitals = []
@@ -1119,19 +1097,8 @@ async def search_hospital_by_disease(disease: Union[str, List[str]], limit: Opti
 
     final_limit = _get_final_limit(limit)
 
-    # 1. 질환명 표준화 Hybrid 로직 적용
-    disease_list = disease if isinstance(disease, list) else [disease]
-    hybrid_disease_list = []
-    for d in disease_list:
-        if not d: continue
-        standards = await getStandardSpecialty(d)
-        if standards:
-            hybrid_disease_list.append(standards)
-        else:
-            hybrid_disease_list.append(d)
-
-    # 2. 1차 검색어 생성 (AND 방식) - Hybrid 리스트 사용
-    disease_search_term, has_space = _generate_boolean_term(hybrid_disease_list, 'AND')
+    # 1차 검색어 생성 (AND 방식)
+    disease_search_term, has_space = _generate_boolean_term(disease, 'AND')
 
     if not disease_search_term:
         return {"chat_type": "recommand_hospital", "answer": {"hospitals": []}}
@@ -1161,7 +1128,7 @@ async def search_hospital_by_disease(disease: Union[str, List[str]], limit: Opti
         # 결과가 없고 공백이 포함된 경우 2단계: OR 검색 수행
         if not list_of_tuples and has_space:
             logger.info("No results with AND search. Attempting Fallback with OR search.")
-            disease_search_term_or, _ = _generate_boolean_term(hybrid_disease_list, 'OR')
+            disease_search_term_or, _ = _generate_boolean_term(disease, 'OR')
             list_of_tuples = await asyncio.to_thread(_perform_simple_disease_hospital_search, disease_search_term_or)
         
         hospitals = []
@@ -1223,19 +1190,8 @@ async def search_hospital_by_disease_and_department(disease: Union[str, List[str
             l_department = []  # 진료과 값을 비움
 
     # potentially nullified 값으로 검색어 재생성
-    # 1. 질환명 표준화 Hybrid 로직 적용
-    disease_list = l_disease if isinstance(l_disease, list) else [l_disease]
-    hybrid_disease_list = []
-    for d in disease_list:
-        if not d: continue
-        standards = await getStandardSpecialty(d)
-        if standards:
-            hybrid_disease_list.append(standards)
-        else:
-            hybrid_disease_list.append(d)
-
-    # 1차 검색어 생성 (AND 방식) - Hybrid 리스트 사용
-    disease_search_term, d_has_space = _generate_boolean_term(hybrid_disease_list, 'AND')
+    # 1차 검색어 생성 (AND 방식)
+    disease_search_term, d_has_space = _generate_boolean_term(l_disease, 'AND')
     department_search_term, dept_has_space = _generate_boolean_term(l_department, 'AND')
     has_space = d_has_space or dept_has_space
 
@@ -1300,7 +1256,7 @@ async def search_hospital_by_disease_and_department(disease: Union[str, List[str
         # 결과가 없고 공백이 포함된 경우 2단계: OR 검색 수행
         if not list_of_tuples and has_space:
             logger.info("No results with AND search. Attempting Fallback with OR search.")
-            disease_search_term_or, _ = _generate_boolean_term(hybrid_disease_list, 'OR')
+            disease_search_term_or, _ = _generate_boolean_term(l_disease, 'OR')
             department_search_term_or, _ = _generate_boolean_term(l_department, 'OR')
             list_of_tuples = await asyncio.to_thread(_perform_combined_hospital_search, disease_search_term_or, department_search_term_or)
         
@@ -1690,8 +1646,7 @@ async def search_doctors_by_disease_and_department(disease: Union[str, List[str]
             standard_diseases = []
             if disease_list:
                 for d in disease_list:
-                    res = await getStandardSpecialty(d)
-                    if res: standard_diseases.append(res)
+                    standard_diseases.extend(getStandardSpecialty(d))
             
             try:
                 doctors_data = await asyncio.to_thread(getRecommandDoctors, standard_diseases, disease_list)
@@ -1705,8 +1660,7 @@ async def search_doctors_by_disease_and_department(disease: Union[str, List[str]
         standard_diseases = []
         if disease_list:
             for d in disease_list:
-                res = await getStandardSpecialty(d)
-                if res: standard_diseases.append(res)
+                standard_diseases.extend(getStandardSpecialty(d))
         
         try:
             doctors_data = await asyncio.to_thread(getRecommandDoctorWithDiseaseAndDepartment, standard_diseases, disease_list, department, limit=final_limit)
