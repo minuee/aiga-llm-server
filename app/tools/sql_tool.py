@@ -20,6 +20,7 @@ from functools import wraps
 from ..common.logger import logger
 from .location_dic import GROUP_LOCATION_EXPANSION_RULES, LOCATION_NORMALIZATION_RULES # Import the rules for group locations
 
+from ..database.db import engine as db_engine, fetchData
 from ..database.searchDoctor import getSearchDoctorsByOnlyDepartment
 from ..common.utils import _get_final_limit
 
@@ -118,9 +119,9 @@ sql_llm = AzureChatOpenAI(
     temperature=0
 )
 
-# SQLDatabase 인스턴스 생성 (tools.py와 동일하게 유지)
-sql_db = SQLDatabase.from_uri(
-    f"mysql+mysqlconnector://{settings.mysql_user}:{settings.mysql_password}@{settings.mysql_host}:{settings.mysql_port}/{settings.mysql_db}?collation=utf8mb4_general_ci",
+# SQLDatabase 인스턴스 생성 (db_engine 활용하여 커넥션 풀 통합)
+sql_db = SQLDatabase(
+    db_engine,
     sample_rows_in_table_info=0,
     include_tables=['hospital', 'hospital_evaluation', 'doctor', 'doctor_basic', 'doctor_career', 'doctor_evaluation']
 )
@@ -194,7 +195,7 @@ async def _get_coords_for_location(location_name: str):
         query = text(query_str)
         
         def _run_sync_query():
-            with sql_db._engine.connect() as connection:
+            with db_engine.connect() as connection:
                 return connection.execute(query, params).fetchone()
         
         return await asyncio.to_thread(_run_sync_query)
@@ -238,7 +239,7 @@ async def _get_coords_for_location(location_name: str):
             query_str = f"SELECT AVG(lat) as lat, AVG(lon) as lon FROM hospital WHERE ({where_clause}) AND lat IS NOT NULL AND lon IS NOT NULL AND hid LIKE 'H01KR%'"
             try:
                 def _run_group_query():
-                    with sql_db._engine.connect() as connection:
+                    with db_engine.connect() as connection:
                         return connection.execute(text(query_str)).fetchone()
                 row = await asyncio.to_thread(_run_group_query)
                 if row and row.lat is not None:
@@ -465,7 +466,7 @@ async def search_hospitals_by_location_and_department(department: Union[str, Lis
             """
         
         logger.info(f"Executing SQL Query: {query}")
-        with sql_db._engine.connect() as connection:
+        with db_engine.connect() as connection:
             return connection.execute(text(query)).fetchall()
 
     try:
@@ -611,7 +612,7 @@ async def search_doctor_details_by_name(name: Union[str, List[str]], hospital: O
     
     try:
         def _execute_query():
-            with sql_db._engine.connect() as connection:
+            with db_engine.connect() as connection:
                 return connection.execute(text(template_query), params).fetchall()
 
         list_of_tuples = await asyncio.to_thread(_execute_query)
@@ -702,7 +703,7 @@ async def search_hospital_details_by_name(name: Union[str, List[str]], latitude:
 
     try:
         def _execute_query():
-            with sql_db._engine.connect() as connection:
+            with db_engine.connect() as connection:
                 return connection.execute(text(template_query), params).fetchall()
 
         list_of_tuples = await asyncio.to_thread(_execute_query)
@@ -813,7 +814,7 @@ async def search_doctors_by_location_and_department(department: Union[str, List[
             LIMIT {final_limit};
         """
         logger.info(f"Executing SQL Query: {query}")
-        with sql_db._engine.connect() as connection:
+        with db_engine.connect() as connection:
             return connection.execute(text(query)).fetchall()
 
     try:
@@ -954,7 +955,7 @@ async def search_doctors_by_disease_and_location(disease: Union[str, List[str]],
             LIMIT {final_limit};
         """
         logger.info(f"Executing SQL Query: {query}")
-        with sql_db._engine.connect() as connection:
+        with db_engine.connect() as connection:
             return connection.execute(text(query)).fetchall()
 
     try:
@@ -1073,7 +1074,7 @@ async def search_hospital_by_disease_and_location(disease: Union[str, List[str]]
             """
         
         logger.info(f"Executing SQL Query: {query}")
-        with sql_db._engine.connect() as connection:
+        with db_engine.connect() as connection:
             return connection.execute(text(query)).fetchall()
 
     try:
@@ -1151,7 +1152,7 @@ async def search_hospital_by_disease(disease: Union[str, List[str]], limit: Opti
             LIMIT {final_limit};
         """
         logger.info(f"Executing SQL Query: {query}")
-        with sql_db._engine.connect() as connection:
+        with db_engine.connect() as connection:
             return connection.execute(text(query)).fetchall()
 
     try:
@@ -1290,7 +1291,7 @@ async def search_hospital_by_disease_and_department(disease: Union[str, List[str
             """
         
         logger.info(f"Executing SQL Query: {query}")
-        with sql_db._engine.connect() as connection:
+        with db_engine.connect() as connection:
             return connection.execute(text(query)).fetchall()
 
     try:
@@ -1387,7 +1388,7 @@ async def search_doctors_by_hospital_name(hospital_name: Union[str, List[str]], 
 
     try:
         def _execute_query():
-            with sql_db._engine.connect() as connection:
+            with db_engine.connect() as connection:
                 return connection.execute(text(template_query), params).fetchall()
 
         list_of_tuples = await asyncio.to_thread(_execute_query)
@@ -1480,7 +1481,7 @@ async def search_by_location_only(location: str, target: str, is_location_near: 
         logger.info(f"Generated SQL Query for hospitals (location only): {template_query}")
         try:
             def _execute_query():
-                with sql_db._engine.connect() as connection:
+                with db_engine.connect() as connection:
                     return connection.execute(text(template_query)).fetchall()
 
             list_of_tuples = await asyncio.to_thread(_execute_query)
@@ -1562,7 +1563,7 @@ async def search_by_location_only(location: str, target: str, is_location_near: 
         
         try:
             def _execute_query():
-                with sql_db._engine.connect() as connection:
+                with db_engine.connect() as connection:
                     return connection.execute(text(template_query), params).fetchall()
 
             list_of_tuples = await asyncio.to_thread(_execute_query)

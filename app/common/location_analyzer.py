@@ -256,12 +256,18 @@ def analyze_other_location_request(text: str) -> bool:
         logger.error(f"'다른 장소 요청' 분석 중 오류 발생: {e}", exc_info=True)
         return False
 
+# 긍정 답변 패턴 (AI의 제안에 동의하는 표현)
+POSITIVE_CONFIRMATION_PATTERNS = {
+    "찾아줘", "알려줘", "응", "그래", "좋아", "좋네", "좋아요", "오케이", "ok", "yes", "어", "ㅇ", "ㅇㅇ", "보여줘", "검색해줘"
+}
+
 async def update_location_context(
     llm: AzureChatOpenAI,
     user_message: str,
     location_history: list,
     latitude: Optional[float] = None,
-    longitude: Optional[float] = None
+    longitude: Optional[float] = None,
+    last_ai_message: Optional[str] = None
 ) -> tuple[list, Optional[str]]:
     """
     사용자 메시지를 분석하여 위치 기록을 업데이트하고, 필요한 경우 명확한 설명을 요청하는 질문을 반환합니다.
@@ -274,6 +280,22 @@ async def update_location_context(
 
     classification, anchor_noun, is_nearby = classify_location_query(user_message)
     
+    # [Context Inheritance] 
+    # 만약 현재 메시지에서 위치 의도가 명확히 드러나지 않았지만 (NONE),
+    # 직전 AI 메시지에서 '근처' 검색을 제안했고 사용자가 긍정적으로 답변했다면 의도를 상속함.
+    if classification == "NONE" and last_ai_message:
+        # AI 메시지에 '근처' 또는 '가까운'이 포함되어 있는지 확인
+        ai_offered_nearby = any(word in last_ai_message for word in ["근처", "가까운", "주변", "가까이"])
+        
+        # 사용자의 메시지가 긍정 답변(수락)인지 확인
+        # 공백 제거 후 확인하거나 형태소 분석 결과 활용 (여기서는 간단히 패턴 매칭)
+        user_confirmed = any(pattern in user_message.replace(" ", "") for pattern in POSITIVE_CONFIRMATION_PATTERNS)
+        
+        if ai_offered_nearby and user_confirmed:
+            logger.info(f"맥락 상속: 직전 AI 메시지의 '근처' 제안을 사용자가 수락함. USER_LOCATION으로 처리합니다.")
+            classification = "USER_LOCATION"
+            is_nearby = True
+
     # 2. "내 근처" (USER_LOCATION) 쿼리 처리
     if classification == "USER_LOCATION":
         logger.info("위치 분석: 'USER_LOCATION' 쿼리 감지.")

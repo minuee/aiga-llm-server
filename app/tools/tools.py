@@ -16,6 +16,7 @@ from ..database.doctor_paper import getDoctorPaper, getPatientMaxScore
 from ..database.recommandHospital import getRecommandHospitals
 from ..common.common import getValidHospitalName
 from ..database.searchDoctor import getSearchDoctors, getSearchDoctorsByHospitalAndDept, getSearchDoctorsByOnlyHospital
+from ..database.db import engine as db_engine
 from ..common.logger import logger
 
 from langchain_community.utilities import SQLDatabase
@@ -68,9 +69,9 @@ sql_llm = AzureChatOpenAI(
     temperature=0
 )
 
-# SQLDatabase 인스턴스 생성
-sql_db = SQLDatabase.from_uri(
-    f"mysql+mysqlconnector://{settings.mysql_user}:{settings.mysql_password}@{settings.mysql_host}:{settings.mysql_port}/{settings.mysql_db}?collation=utf8mb4_general_ci",
+# SQLDatabase 인스턴스 생성 (db_engine 활용하여 커넥션 풀 통합)
+sql_db = SQLDatabase(
+    db_engine,
     sample_rows_in_table_info=0,
     include_tables=['hospital', 'hospital_evaluation', 'doctor', 'doctor_basic', 'doctor_career', 'doctor_evaluation']
 )
@@ -202,7 +203,7 @@ async def _get_coords_for_location_old(location_name: str):
     
     try:
         def _execute_query():
-            with sql_db._engine.connect() as connection:
+            with db_engine.connect() as connection:
                 return connection.execute(query, params).fetchone()
 
         row = await asyncio.to_thread(_execute_query)

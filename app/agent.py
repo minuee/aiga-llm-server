@@ -147,45 +147,48 @@ async def agent_node(state: AgentState, config: RunnableConfig):
         user_message=current_user_message,
         location_history=state.get('location_history', []),
         latitude=state.get('latitude'),
-        longitude=state.get('longitude')
+        longitude=state.get('longitude'),
+        last_ai_message=state.get("last_ai_message") # Pass the last AI message for context inheritance
     )
 
     # 2. Update state with the new history
     state['location_history'] = updated_history
 
     # 엔트리 저장 여부  감지 (환경 변수 설정 시)
-    # 🚨 START: AI의 최종 답변에서 엔티티 추출하여 entity_history 업데이트
+    # 🚨 START: AI의 최종 답변에서 엔티티 추출하여 entity_history 업데이트 (현재 사용하지 않으므로 주석 처리 - 속도 개선)
     current_entity_history = state.get("entity_history")
     if current_entity_history is None:
         current_entity_history = {"hospitals": [], "doctors": [], "departments": [], "diseases": [], "location": None}
     
-    # state["last_ai_message"]가 존재할 때만 엔티티 추출 로직 실행
-    # --- START: 직전 AIMessage 분석을 통한 레거시 컨텍스트 추출
-    ai_message_recommendation_info = "" # 최종 system prompt에 삽입될 정보
-    last_ai_message_content = None # 직전 AIMessage의 content를 저장할 변수
+    # # state["last_ai_message"]가 존재할 때만 엔티티 추출 로직 실행
+    # # --- START: 직전 AIMessage 분석을 통한 레거시 컨텍스트 추출
+    # ai_message_recommendation_info = "" # 최종 system prompt에 삽입될 정보
+    # last_ai_message_content = None # 직전 AIMessage의 content를 저장할 변수
     
-    # 마지막 HumanMessage의 인덱스를 찾습니다.
-    last_human_message_idx = -1
-    for i in range(len( state["messages"]) - 1, -1, -1):
-        if isinstance( state["messages"][i], HumanMessage):
-            last_human_message_idx = i
-            break
+    # # 마지막 HumanMessage의 인덱스를 찾습니다.
+    # last_human_message_idx = -1
+    # for i in range(len( state["messages"]) - 1, -1, -1):
+    #     if isinstance( state["messages"][i], HumanMessage):
+    #         last_human_message_idx = i
+    #         break
 
-    # 마지막 HumanMessage 이전에 AIMessage가 있는지 확인합니다.
-    # 즉, last_human_message_idx - 1 위치의 메시지가 AIMessage여야 합니다.
-    if last_human_message_idx > 0 and isinstance( state["messages"][last_human_message_idx - 1], AIMessage):
-        last_ai_message_content =  state["messages"][last_human_message_idx - 1].content
-    # --- END: 직전 AIMessage 분석을 통한 레거시 컨텍스트 추출 ---
+    # # 마지막 HumanMessage 이전에 AIMessage가 있는지 확인합니다.
+    # # 즉, last_human_message_idx - 1 위치의 메시지가 AIMessage여야 합니다.
+    # if last_human_message_idx > 0 and isinstance( state["messages"][last_human_message_idx - 1], AIMessage):
+    #     last_ai_message_content =  state["messages"][last_human_message_idx - 1].content
+    # # --- END: 직전 AIMessage 분석을 통한 레거시 컨텍스트 추출 ---
 
-    last_ai_message_to_process = last_ai_message_content
-    if last_ai_message_to_process:
-        state["entity_history"] = await extract_entities_from_ai_response_and_update_history(
-            llm=llm_for_summary,
-            ai_response_content=last_ai_message_to_process,
-            current_entity_history=current_entity_history
-        )
-    else:
-        state["entity_history"] = current_entity_history # last_ai_message가 없으면 기존 entity_history 유지 또는 초기화
+    # last_ai_message_to_process = last_ai_message_content
+    # if last_ai_message_to_process:
+    #     state["entity_history"] = await extract_entities_from_ai_response_and_update_history(
+    #         llm=llm_for_summary,
+    #         ai_response_content=last_ai_message_to_process,
+    #         current_entity_history=current_entity_history
+    #     )
+    # else:
+    #     state["entity_history"] = current_entity_history # last_ai_message가 없으면 기존 entity_history 유지 또는 초기화
+    
+    state["entity_history"] = current_entity_history
     # 🚨 END: AI의 최종 답변에서 엔티티 추출하여 entity_history 업데이트
     # --- End of New Entity Context Management ---
 
@@ -636,18 +639,10 @@ async def custom_tool_node(state: AgentState):
         logger.info(f"llm_select llm_limit : '{llm_limit}'")
         # --- [PROXIMITY_INJECTION] ---
         # is_location_near 파라미터를 받는 툴이라면, is_proximity_query 값을 주입
-        if tool_name in [
-            "search_hospitals_by_location_and_department",
-            "search_doctors_by_location_and_department",
-            "search_doctors_by_disease_and_location",
-            "search_hospital_by_disease_and_location",
-            "search_by_location_only"
-        ]:
-            # LLM이 is_location_near 값을 생성하지 않았거나 잘못 생성한 경우,
-            # NLP 분석 결과를 기반으로 강제 주입/수정합니다.
-            if tool_args.get('is_location_near') != is_proximity_query:
-                 logger.info(f"Tool '{tool_name}'의 is_location_near 값을 {is_proximity_query}(으)로 강제 주입/수정합니다.")
-                 tool_args['is_location_near'] = is_proximity_query
+        #if tool_name in ["search_hospitals_by_location_and_department","search_doctors_by_location_and_department","search_doctors_by_disease_and_location","search_hospital_by_disease_and_location","search_by_location_only"]:
+        #    if tool_args.get('is_location_near') != is_proximity_query:
+        #         logger.info(f"Tool '{tool_name}'의 is_location_near 값을 {is_proximity_query}(으)로 강제 주입/수정합니다.")
+        #         tool_args['is_location_near'] = is_proximity_query
         # --- [PROXIMITY_INJECTION_END] ---
         
         if tool_name == "search_doctor_for_else_question":

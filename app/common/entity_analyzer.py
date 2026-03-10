@@ -191,38 +191,19 @@ async def update_entity_context(
 
 async def extract_entities_for_routing(llm: AzureChatOpenAI, state: dict) -> dict:
     """
-    Uses a fast LLM call to extract key entities for routing to a simpler tool, 
-    considering the whole conversation context and pre-extracted entities,
-    and also leveraging the persistent entity_history.
+    [OPTIMIZED] Uses a SINGLE fast LLM call to extract key entities for routing.
+    Eliminated the redundant pre-extraction step (update_entity_context) to reduce latency.
     """
 
-    logger.info("Starting entity extraction for routing, considering full conversation history and entity_history.")
+    logger.info("Starting optimized entity extraction for routing (Single LLM Call).")
 
-    # 1. 먼저 update_entity_context를 호출하여 현재 턴의 기본적인 엔티티 정보를 추출합니다.
-    pre_extracted_entities = await update_entity_context(llm, state['messages'])
+    # 1. 이전의 확정된 엔티티 히스토리를 기본 컨텍스트로 사용 (추가 LLM 호출 없음)
+    entity_history = state.get("entity_history") or {"hospitals": [], "doctors": [], "departments": [], "diseases": [], "location": None}
     
-
-    # 초기 엔티티 설정
-    current_extracted = {
-        "diseases": [],
-        "departments": [],
-        "hospitals": [],
-        "doctors": [],
-        "location": None # location 필드 추가
-    }
-
-    if pre_extracted_entities: # pre_extracted_entities가 None이 아닐 경우에만 처리
-        _add_unique_items(current_extracted["diseases"], pre_extracted_entities.get("diseases"))
-        _add_unique_items(current_extracted["departments"], pre_extracted_entities.get("departments"))
-        _add_unique_items(current_extracted["hospitals"], pre_extracted_entities.get("hospitals"))
-        _add_unique_doctors(current_extracted["doctors"], pre_extracted_entities.get("doctors"))
-
-    
-    # 대화 기록을 LLM 프롬프트에 포함하기 위해 포맷팅
+    # 대화 기록 포맷팅
     def format_message_for_history(msg):
         if isinstance(msg, ToolMessage):
             try:
-                # ToolMessage의 content가 JSON이면 answer 필드만 추출하여 포함
                 content_json = json.loads(msg.content)
                 if content_json.get("migrated") is True:
                      return "ToolMessage: [Previous tool result (migrated)]"
@@ -230,13 +211,11 @@ async def extract_entities_for_routing(llm: AzureChatOpenAI, state: dict) -> dic
                     answer_content = content_json.get('answer')
                     if isinstance(answer_content, dict):
                         answer_to_send = answer_content.copy()
-                        # Remove address-related keys to prevent LLM from misinterpreting location
                         for key in ['address', 'hospital_address', 'location']:
                             if key in answer_to_send:
                                 del answer_to_send[key]
                         return f"ToolMessage (answer): {json.dumps(answer_to_send, ensure_ascii=False)}"
                     else:
-                        # answer_content가 dict가 아닌 경우 (예: string) 그대로 사용
                         return f"ToolMessage (answer): {json.dumps(answer_content, ensure_ascii=False)}"
                 else:
                     return f"ToolMessage: {msg.content}"
@@ -245,80 +224,27 @@ async def extract_entities_for_routing(llm: AzureChatOpenAI, state: dict) -> dic
         else:
             return f"{type(msg).__name__}: {msg.content}"
 
-    history_messages = [format_message_for_history(msg) for msg in state['messages'][-10:]] # 최근 10개 메시지
+    history_messages = [format_message_for_history(msg) for msg in state['messages'][-10:]]
     history = "\n".join(history_messages)
 
-    hospital_names = []
-    if current_extracted.get('hospitals'):
-        for item in current_extracted['hospitals']:
-            if isinstance(item, dict) and item.get('name'):
-                hospital_names.append(item['name'])
-            elif isinstance(item, str):
-                hospital_names.append(item)
-    
-    doctor_names = []
-    if current_extracted.get('doctors'):
-        for item in current_extracted['doctors']:
-            if isinstance(item, dict) and item.get('name'):
-                doctor_names.append(item['name'])
-            elif isinstance(item, str):
-                doctor_names.append(item)
+    # LLM 프롬프트: 히스토리와 기존 히스토리를 모두 참고하여 '한 번에' 추출
+    prompt = f"""아래 대화 기록과 기존에 확정된 엔티티 정보(entity_history)를 모두 참고하여 'location', 'disease', 'department', 'target'('의사' 또는 '병원')를 정확히 추출하세요.
 
-    # LLM 프롬프트에 현재까지 추출된 엔티티 정보를 포함하여 전달
-    prompt = f"""아래 대화 기록과 현재까지 추출된 엔티티 정보 (현재 턴 및 persistent entity_history에서 통합됨)를 모두 참고하여 'location', 'disease', 'department', 'target'('의사' 또는 '병원')를 추출합니다.
-**현재까지 추출된 엔티티 정보는 아래 JSON 블록으로 제공되며, 이 정보는 사용자의 명시적인 질문 또는 이전 대화의 맥락에서 통합된 가장 신뢰할 수 있는 엔티티 데이터입니다. LLM은 이 정보를 최우선으로 활용하여 다음 단계를 결정해야 합니다.**
+[기존 확정 엔티티 (entity_history)]
+{json.dumps(entity_history, ensure_ascii=False, indent=2)}
 
-[현재까지 추출된 엔티티 (통합 정보)]
-{{
-    "diseases": {json.dumps(current_extracted['diseases'], ensure_ascii=False)},
-    "departments": {json.dumps(current_extracted['departments'], ensure_ascii=False)},
-    "hospitals": {json.dumps(hospital_names, ensure_ascii=False)},
-    "doctors": {json.dumps(doctor_names, ensure_ascii=False)},
-    "location": {json.dumps(current_extracted['location'], ensure_ascii=False)}
-}}
-
-[규칙]
-1. **그룹 지역명 인식**: "부울경", "수도권", "전라도", "경상도", "충청도"와 같은 광역 그룹 이름은 'location'으로 추출되어야 한다.
-2. **매우 중요: '소아과', '내과', '심장내과'와 같은 진료과목 이름은 절대로 'disease' 필드에 넣지 말라. 'disease' 필드는 '감기', '고혈압', '당뇨'와 같은 실제 질병이나 증상 이름만 포함해야 한다. 진료과목은 'department' 필드에만 해당된다.**
-   - **만약 'disease'가 명확하게 추출되었다면, 해당 질병을 주로 다루는 진료과목을 유추하여 'department' 필드를 채워 넣어라. 예를 들어, '소아 아토피 피부염'이 disease라면 '피부과'나 '소아청소년과'를 department로 유추할 수 있다.**
-   - **만약 질병명만 있고 진료과목 유추가 어렵다면 'department'는 null로 설정한다.**
-3. '내 근처', '여기 근처' 등 사용자 자신을 기준으로 하는 단어는 'location'이 아니다. 이런 단어가 보이면 'location'은 null로 설정해라. 최신 순의 대화 흐름을 판단하여 location을 추출해야 한다. 병원정보의 해당하는 address파마리터를 절대 참고하지 말라.
-4. 3번의 경우 휴먼메시지가 아닌 AI가 답변한 메시지 내에서 가령 "현재 위치 근처에서" 등의 사용자 자신을 기준으로 하는 단어는 'location'을 null로 설정해라.
-5. 대화 기록에서 이미 '시/도' 정보(예: 서울)가 언급되었고, 마지막 질문에 '구/동' 정보(예: 중구)만 있다면, 이 둘을 조합하여 '서울 중구'와 같이 완전한 지역명을 'location'으로 추출해야 한다.
-6. **대화의 전체 맥락을 고려하세요. 사용자의 마지막 질문에 특정 정보(예: 진료과)가 없다면, 이전 대화들에서 해당하는 가장 최신 정보를 찾아 사용해야 한다.**
-7. ** 어떤 경우에도 'target'은 null이 될 수 없으며, 반드시 '의사' 또는 '병원' 중 하나를 선택해야 한다.**
-   - **대화 기록을 참고하여 설정한다.
-[예시]
-대화 기록:
-HumanMessage: 소아 아토피 피부염 전문의 추천
-
-JSON:
-{{
-  "location": null,
-  "disease": "소아 아토피 피부염",
-  "department": ["피부과", "소아청소년과"],
-  "target": "의사",
-  "target_reason" : "전문의를 추천해달라고 요청을 해사"
-}}
-
-대화 기록:
-HumanMessage: 기침이 심한데, 내 근처 병원 알려줘
-
-JSON:
-{{
-  "location": null,
-  "disease": "기침",
-  "department": ["호흡기내과"],
-  "target": "병원",
-  "target_reason" : "근처 병원을 알려해달라고 요청을 해사"
-}}
-
-[대화 기록]
+[대화 기록 (최근 10개)]
 {history}
 
-JSON 객체 형식으로만 응답하세요. 값이 없으면 null을 사용한다.
+[추출 규칙]
+1. **그룹 지역명 인식**: "부울경", "수도권", "전라도", "경상도", "충청도" 등은 'location'으로 추출.
+2. **진료과/질병 구분**: '소아과', '내과' 등은 'department'에, '감기', '당뇨' 등은 'disease'에 넣으세요.
+3. **위치 판단**: '내 근처', '여기' 등은 location을 null로 설정. 구체적인 지명(서울 강남 등)만 location에 추출.
+4. **맥락 고려**: 마지막 질문에 정보가 없으면 히스토리의 가장 최신 정보를 사용.
+5. **타겟 결정**: 반드시 '의사' 또는 '병원' 중 하나를 선택 (target_reason 포함).
+
+응답은 반드시 JSON 객체 형식으로만 하세요.
 JSON:
-        
 """
     try:
         response = await llm.ainvoke(prompt)
